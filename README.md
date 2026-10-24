@@ -5,7 +5,7 @@ Equipo de Desarrollo: **MAFY**.
 
 ---
 
-## ⚡ Inicio Rápido Centralizado (`manage.py`)
+##  Inicio Rápido Centralizado (`manage.py`)
 
 Para evitar tener que memorizar comandos largos de Docker o rutas de entornos virtuales, el proyecto cuenta con un **CLI centralizado en Python** (`manage.py`) que funciona de forma idéntica en **Windows, Linux y macOS**:
 
@@ -17,12 +17,12 @@ python manage.py install-deps
 python manage.py start-full
 
 # 3. Probar el sistema en tu navegador
-# 👉 http://localhost
+#  http://localhost
 ```
 
 ---
 
-## 🎮 Panel de Comandos de `manage.py`
+##  Panel de Comandos de `manage.py`
 
 | Comando | Qué hace exactamente | Cuándo usarlo |
 | :--- | :--- | :--- |
@@ -39,7 +39,7 @@ python manage.py start-full
 
 ---
 
-## 💡 Diferencias Clave que Debes Conocer
+##  Diferencias Clave que Debes Conocer
 
 ### 1. `start-dbs` vs. `start-full`: ¿Cuál debo usar?
 * **Usa `start-dbs` para PROGRAMAR (Modo Desarrollo Local):**
@@ -58,7 +58,7 @@ python manage.py start-full
 
 ---
 
-## 🏛️ Arquitectura del Sistema
+##  Arquitectura del Sistema
 
 El sistema implementa una arquitectura de **Monolito Modular con Diseño Hexagonal (Ports & Adapters)**:
 * **Frontend:** React 18, TypeScript (modo estricto `strict: true`), Vite, Tailwind CSS y Lucide Icons.
@@ -72,7 +72,7 @@ El sistema implementa una arquitectura de **Monolito Modular con Diseño Hexagon
 
 ---
 
-## 📋 Requisitos de Software Previos
+##  Requisitos de Software Previos
 
 Antes de comenzar, asegúrate de tener instalado:
 1. **Git:** ([Descargar Git](https://git-scm.com/)).
@@ -82,7 +82,7 @@ Antes de comenzar, asegúrate de tener instalado:
 
 ---
 
-## 🧪 Pruebas Automatizadas y Calidad
+##  Pruebas Automatizadas y Calidad
 
 Puedes correr todas las validaciones de calidad con el CLI:
 
@@ -99,7 +99,7 @@ python manage.py smoke-test
 
 ---
 
-## 📁 Estructura del Repositorio
+##  Estructura del Repositorio
 
 ```text
 Poke-Arena/
