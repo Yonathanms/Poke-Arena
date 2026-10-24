@@ -1,0 +1,99 @@
+# ==========================================
+# 0. Documentación local y privada
+# ==========================================
+contexto/
+
+# ==========================================
+# 1. Variables de entorno y credenciales
+# ==========================================
+.env
+.env.local
+.env.*.local
+!*.env.example
+
+# ==========================================
+# 2. Python (Backend FastAPI)
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Herramientas de calidad y pruebas (Ruff, Mypy, Pytest, Hypothesis)
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.import-linter-cache/
+
+# ==========================================
+# 3. Node.js & Frontend (Vite + React)
+# ==========================================
+node_modules/
+frontend/dist/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.eslintcache
+
+# ==========================================
+# 4. Persistencia local y volúmenes Docker
+# ==========================================
+docker-data/
+pgdata/
+mongodata/
+uploads/
+storage/
+media/
+*.log
+
+# ==========================================
+# 5. IDEs y Sistema Operativo
+# ==========================================
+# VS Code (permite compartir configuraciones de equipo si se requiere)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# JetBrains
+.idea/
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
