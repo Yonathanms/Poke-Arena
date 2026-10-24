@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from src.shared.infrastructure.config import get_settings
 
@@ -18,15 +20,19 @@ class Base(DeclarativeBase):
     pass
 
 
+pool_kwargs: dict[str, Any] = (
+    {"poolclass": NullPool}
+    if settings.ENVIRONMENT == "test"
+    else {"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20}
+)
+
 # ------------------------------------------------------------------------------
 # 1. Motor de Escritura (PostgreSQL Master - Transacciones ACID)
 # ------------------------------------------------------------------------------
 write_engine = create_async_engine(
     settings.DATABASE_WRITE_URL,
     echo=settings.DEBUG,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    **pool_kwargs,
 )
 
 AsyncWriteSessionLocal = async_sessionmaker(
@@ -44,9 +50,7 @@ AsyncWriteSessionLocal = async_sessionmaker(
 read_engine = create_async_engine(
     settings.DATABASE_READ_URL,
     echo=settings.DEBUG,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    **pool_kwargs,
 )
 
 AsyncReadSessionLocal = async_sessionmaker(

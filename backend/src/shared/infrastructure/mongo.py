@@ -1,29 +1,36 @@
+import asyncio
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from src.shared.infrastructure.config import get_settings
 
 settings = get_settings()
 
-_mongo_client: AsyncIOMotorClient | None = None
+_clients: dict[int, AsyncIOMotorClient] = {}
 
 
 def get_mongo_client() -> AsyncIOMotorClient:
-    """Retorna la instancia global del cliente asíncrono Motor para MongoDB."""
-    global _mongo_client
-    if _mongo_client is None:
-        _mongo_client = AsyncIOMotorClient(settings.MONGO_URL)
-    return _mongo_client
+    """Retorna la instancia del cliente asíncrono Motor para el event loop actual."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop_id = id(loop)
+    except RuntimeError:
+        loop_id = 0
+
+    if loop_id not in _clients:
+        _clients[loop_id] = AsyncIOMotorClient(settings.MONGO_URL)
+    return _clients[loop_id]
 
 
 def get_mongo_db() -> AsyncIOMotorDatabase:
-    """Retorna la base de datos de MongoDB configurada."""
+    """Retorna la base de datos de MongoDB configurada en el loop activo."""
     client = get_mongo_client()
     return client[settings.MONGO_DB]
 
 
 def close_mongo_connection() -> None:
-    """Cierra la conexión activa con MongoDB al apagar la aplicación."""
-    global _mongo_client
-    if _mongo_client is not None:
-        _mongo_client.close()
-        _mongo_client = None
+    """Cierra las conexiones activas con MongoDB."""
+    global _clients
+    for client in _clients.values():
+        client.close()
+    _clients.clear()

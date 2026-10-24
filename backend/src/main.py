@@ -26,9 +26,14 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Ciclo de vida de la aplicación: inicialización y apagado limpio."""
-    # 1. Startup: Crear tablas en PostgreSQL (Master) si no existen
+    # 1. Startup: Crear tablas en PostgreSQL (Master y Réplica en local) si no existen
     async with write_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with read_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception:
+        pass
 
     # 2. Inicializar índices en MongoDB
     mongo_db = get_mongo_db()
