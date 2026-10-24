@@ -50,6 +50,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             http_status = status.HTTP_404_NOT_FOUND
         elif isinstance(exc, ConflictError):
             http_status = status.HTTP_409_CONFLICT
+        elif exc.code in {
+            "CARD_CREATION_OUTCOME_UNKNOWN",
+            "CARD_IMAGE_COMPENSATION_REQUIRED",
+        }:
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
 
         return _build_error_response(
             code=exc.code,
@@ -87,13 +92,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             404: "NOT_FOUND",
             405: "METHOD_NOT_ALLOWED",
             429: "TOO_MANY_REQUESTS",
+            503: "SERVICE_UNAVAILABLE",
         }
         code = code_map.get(exc.status_code, "HTTP_ERROR")
-        return _build_error_response(
+        response = _build_error_response(
             code=code,
             message=str(exc.detail),
             status_code=exc.status_code,
         )
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

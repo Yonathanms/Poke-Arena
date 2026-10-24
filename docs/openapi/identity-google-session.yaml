@@ -1,0 +1,66 @@
+openapi: 3.0.3
+info:
+  title: Poké-Arena Identity API
+  version: 1.0.0
+  description: Intercambia una credencial OIDC de Google por una sesión propia de la plataforma.
+servers:
+  - url: /api/v1
+paths:
+  /identity/google/session:
+    post:
+      operationId: createGoogleSession
+      summary: Crear sesión de Poké-Arena con Google
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [google_id_token]
+              properties:
+                google_id_token:
+                  type: string
+                  minLength: 1
+                  maxLength: 8192
+                  description: ID token OIDC obtenido por el cliente para el client ID de Poké-Arena.
+      responses:
+        '201':
+          description: Sesión creada; el token de plataforma es opaco y de duración breve.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in, user_id, role]
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_in: { type: integer, minimum: 60 }
+                  user_id: { type: string, format: uuid }
+                  role: { type: string, enum: [PLAYER, PLATFORM_ADMIN] }
+        '401':
+          description: Credencial Google inválida, expirada o emitida para otra aplicación.
+        '422':
+          description: Solicitud inválida.
+        '503':
+          description: Google, Identity o PostgreSQL no disponibles.
+  /identity/session:
+    delete:
+      operationId: revokePlatformSession
+      summary: Revocar la sesión de plataforma actual
+      security:
+        - PlatformBearerAuth: []
+      responses:
+        '204':
+          description: La sesión se revocó o ya no estaba activa.
+        '401':
+          description: Credencial ausente.
+        '503':
+          description: Identity o PostgreSQL no disponibles.
+components:
+  securitySchemes:
+    PlatformBearerAuth:
+      type: http
+      scheme: bearer
+      description: Token de acceso opaco emitido por Poké-Arena.

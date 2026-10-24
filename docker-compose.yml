@@ -94,13 +94,16 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      ENVIRONMENT: production
+      ENVIRONMENT: ${POKEA_ENVIRONMENT:-development}
       DEBUG: "false"
       APP_INSTANCE_ID: "backend-1"
       DATABASE_WRITE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-master:5432/${POSTGRES_DB:-pokearena_db}
       DATABASE_READ_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-replica:5432/${POSTGRES_DB:-pokearena_db}
       MONGO_URL: mongodb://${MONGO_USER:-mongoadmin}:${MONGO_PASSWORD:-mongo_secure_pass_2026}@mongo:27017/${MONGO_DB:-pokearena_catalog}?authSource=admin
       UPLOAD_DIR: /app/uploads
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      PLATFORM_ADMIN_GOOGLE_SUBJECTS: ${PLATFORM_ADMIN_GOOGLE_SUBJECTS:-}
+      IDENTITY_ACCESS_TOKEN_TTL_SECONDS: ${IDENTITY_ACCESS_TOKEN_TTL_SECONDS:-900}
       ALLOWED_ORIGINS: "http://localhost,http://localhost:80,http://nginx"
     volumes:
       - uploads_data:/app/uploads
@@ -121,13 +124,16 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      ENVIRONMENT: production
+      ENVIRONMENT: ${POKEA_ENVIRONMENT:-development}
       DEBUG: "false"
       APP_INSTANCE_ID: "backend-2"
       DATABASE_WRITE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-master:5432/${POSTGRES_DB:-pokearena_db}
       DATABASE_READ_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-replica:5432/${POSTGRES_DB:-pokearena_db}
       MONGO_URL: mongodb://${MONGO_USER:-mongoadmin}:${MONGO_PASSWORD:-mongo_secure_pass_2026}@mongo:27017/${MONGO_DB:-pokearena_catalog}?authSource=admin
       UPLOAD_DIR: /app/uploads
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      PLATFORM_ADMIN_GOOGLE_SUBJECTS: ${PLATFORM_ADMIN_GOOGLE_SUBJECTS:-}
+      IDENTITY_ACCESS_TOKEN_TTL_SECONDS: ${IDENTITY_ACCESS_TOKEN_TTL_SECONDS:-900}
       ALLOWED_ORIGINS: "http://localhost,http://localhost:80,http://nginx"
     volumes:
       - uploads_data:/app/uploads
@@ -140,6 +146,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
     container_name: pokearena-frontend
     restart: unless-stopped
 

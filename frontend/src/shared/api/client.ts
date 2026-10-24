@@ -1,4 +1,8 @@
 import { ApiErrorResponse } from "../types/api";
+import {
+  getPlatformAccessToken,
+  invalidatePlatformAccessToken,
+} from "../auth/session";
 
 const BASE_URL = "/api/v1";
 
@@ -26,6 +30,10 @@ export async function apiFetch<T>(
   const url = `${BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
   const headers = new Headers(options.headers || {});
+  const accessToken = await getPlatformAccessToken();
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
   if (idempotencyKey) {
     headers.set("Idempotency-Key", idempotencyKey);
   }
@@ -36,6 +44,7 @@ export async function apiFetch<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401) invalidatePlatformAccessToken();
     let errorJson: ApiErrorResponse | null = null;
     try {
       errorJson = await response.json();
@@ -48,6 +57,10 @@ export async function apiFetch<T>(
     }
 
     throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;

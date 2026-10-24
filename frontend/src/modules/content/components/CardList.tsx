@@ -51,7 +51,7 @@ export const CardList: React.FC = () => {
     setSelectedRarity("");
   };
 
-  const types: CardType[] = ["FUE", "AGU", "PLA", "ELE", "PSI", "LUC", "INC"];
+  const types: CardType[] = ["FUE", "AGU", "PLA", "ELE", "PSI", "LUC"];
   const costs = [1, 2, 3, 4, 5, 6];
 
   return (
@@ -114,7 +114,6 @@ export const CardList: React.FC = () => {
               <option value="COMUN">Común</option>
               <option value="POCO_COMUN">Poco común</option>
               <option value="RARA">Rara</option>
-              <option value="EPICA">Épica</option>
               <option value="LEGENDARIA">Legendaria</option>
             </select>
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Zap } from "lucide-react";
-import { CardDTO, CardType } from "../types/content";
+import { AbilitySummaryDTO, CardDTO, CardType } from "../types/content";
 
 interface CardItemProps {
   card: CardDTO;
@@ -13,20 +13,31 @@ const TYPE_COLORS: Record<CardType, { bg: string; text: string; border: string; 
   ELE: { bg: "bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/40", glow: "hover:shadow-amber-500/20" },
   PSI: { bg: "bg-purple-500/20", text: "text-purple-400", border: "border-purple-500/40", glow: "hover:shadow-purple-500/20" },
   LUC: { bg: "bg-orange-600/20", text: "text-orange-400", border: "border-orange-600/40", glow: "hover:shadow-orange-600/20" },
-  INC: { bg: "bg-slate-500/20", text: "text-slate-400", border: "border-slate-500/40", glow: "hover:shadow-slate-500/20" },
 };
 
 const RARITY_COLORS: Record<string, string> = {
   COMUN: "text-slate-400 border-slate-600/40",
   POCO_COMUN: "text-emerald-400 border-emerald-500/40",
   RARA: "text-blue-400 border-blue-500/40",
-  EPICA: "text-purple-400 border-purple-500/40",
   LEGENDARIA: "text-amber-400 border-amber-500/40 shadow-amber-500/10",
 };
 
 export const CardItem: React.FC<CardItemProps> = ({ card }) => {
-  const typeStyle = TYPE_COLORS[card.card_type] || TYPE_COLORS.INC;
+  const typeStyle = TYPE_COLORS[card.card_type];
   const rarityStyle = RARITY_COLORS[card.rarity] || RARITY_COLORS.COMUN;
+  const abilityIsSummary = (
+    ability: NonNullable<CardDTO["ability"]>
+  ): ability is AbilitySummaryDTO => "trigger" in ability;
+  const abilityTrigger = card.ability
+    ? abilityIsSummary(card.ability)
+      ? card.ability.trigger
+      : card.ability.ability_type
+    : null;
+  const abilityEffect = card.ability
+    ? abilityIsSummary(card.ability)
+      ? card.ability.effect
+      : card.ability.description
+    : null;
 
   return (
     <div
@@ -34,17 +45,19 @@ export const CardItem: React.FC<CardItemProps> = ({ card }) => {
     >
       {/* Aspect Ratio 5:7 Container */}
       <div className="relative w-full aspect-[5/7] bg-arena-surface overflow-hidden">
-        <img
-          src={card.thumbnail_url || card.image_url}
-          alt={card.name}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-          onError={(e) => {
-            // Placeholder SVG si la imagen local no está montada
-            (e.target as HTMLImageElement).src =
-              "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' viewBox='0 0 500 700' fill='%231E2738'><text x='50%' y='50%' fill='%2364748B' font-size='24' font-family='sans-serif' text-anchor='middle'>Poké-Card 5:7</text></svg>";
-          }}
-        />
+        {card.thumbnail_url || card.image_url ? (
+          <img
+            src={card.thumbnail_url || card.image_url || ""}
+            alt={card.name}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-slate-400">
+            <span className="text-4xl" aria-hidden="true">◉</span>
+            <span className="text-xs font-medium">Sin imagen</span>
+          </div>
+        )}
 
         {/* Top Badges (Cost and Power) */}
         <div className="absolute top-2.5 left-2.5 flex items-center justify-center w-8 h-8 rounded-full bg-blue-600/90 text-white font-extrabold text-sm shadow-md backdrop-blur-sm border border-blue-400/50">
@@ -80,14 +93,21 @@ export const CardItem: React.FC<CardItemProps> = ({ card }) => {
           </div>
 
           {/* Ability snippet */}
-          {card.ability && card.ability.ability_type !== "HAB-000" && (
+          {card.ability && abilityTrigger && abilityTrigger !== "HAB-000" && (
             <div className="mt-2 text-xs bg-arena-surface/80 rounded-lg p-2 border border-arena-border/50">
               <span className="text-blue-400 font-semibold block text-[11px]">
-                ✦ {card.ability.ability_type}
+                ✦ {abilityTrigger}
               </span>
-              <p className="text-slate-300 text-[11px] line-clamp-2 mt-0.5">
-                {card.ability.description}
-              </p>
+              {abilityEffect && (
+                <p className="text-slate-300 text-[11px] line-clamp-2 mt-0.5">
+                  {abilityEffect}
+                </p>
+              )}
+              {abilityIsSummary(card.ability) && card.ability.affected_card_type && (
+                <span className="mt-1 block text-[10px] text-slate-400">
+                  Afecta tipo {card.ability.affected_card_type}
+                </span>
+              )}
             </div>
           )}
         </div>

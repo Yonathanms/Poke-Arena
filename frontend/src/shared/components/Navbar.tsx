@@ -2,13 +2,31 @@ import React, { useEffect, useState } from "react";
 import { Sparkles, Layers, MapPin, PlusCircle, CheckCircle2, AlertCircle } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { HealthResponse } from "../types/api";
+import { GoogleSignInButton } from "@/modules/identity/components/GoogleSignInButton";
+import { LocalTestLoginButton } from "@/modules/identity/components/LocalTestLoginButton";
+import { PlatformSessionDTO } from "@/modules/identity/api/identity";
+
+interface NavbarSession {
+  userId: string;
+  role: PlatformSessionDTO["role"];
+  expiresAt: number;
+}
 
 interface NavbarProps {
   activeTab: "catalog" | "create-card" | "create-location" | "locations";
   setActiveTab: (tab: "catalog" | "create-card" | "create-location" | "locations") => void;
+  session: NavbarSession | null;
+  onAuthenticated: (session: PlatformSessionDTO) => void;
+  onLogout: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  activeTab,
+  setActiveTab,
+  session,
+  onAuthenticated,
+  onLogout,
+}) => {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(true);
 
@@ -95,21 +113,46 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           </button>
         </nav>
 
-        {/* System Health Badge */}
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-arena-surface/80 border border-arena-border text-xs">
-          {loadingHealth ? (
-            <div className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
-          ) : health?.status === "healthy" ? (
-            <>
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">Bases de Datos OK</span>
-            </>
+        <div className="flex items-center gap-3">
+          {session ? (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-300">
+                {session.role === "PLATFORM_ADMIN" ? "Administrador" : "Jugador"}
+              </span>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="rounded-lg border border-arena-border px-2.5 py-1.5 text-slate-300 hover:bg-arena-surface"
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          ) : loadingHealth ? (
+            <span className="text-xs text-slate-400">Conectando con la API…</span>
+          ) : health && ["development", "test"].includes(health.environment.toLowerCase()) ? (
+            <LocalTestLoginButton onAuthenticated={onAuthenticated} />
+          ) : health ? (
+            <GoogleSignInButton onAuthenticated={onAuthenticated} />
           ) : (
-            <>
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-amber-400 font-medium">Degradado</span>
-            </>
+            <span className="text-xs text-amber-300">Identity no disponible</span>
           )}
+
+          {/* System Health Badge */}
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-arena-surface/80 border border-arena-border text-xs">
+            {loadingHealth ? (
+              <div className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
+            ) : health?.status === "healthy" ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400 font-medium">Bases de Datos OK</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-amber-400 font-medium">Degradado</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </header>

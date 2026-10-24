@@ -2,12 +2,14 @@ import re
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import DuplicateKeyError
 
-from src.modules.content.application.ports import ICardSearchProjectionPort
+from src.modules.content.application.dtos import OutboxClaimDTO
+from src.modules.content.application.ports import ICardProjectionWriter, ICardSearchProjectionPort
 from src.modules.content.domain.entities import Card
 
 
-class MongoCardProjection(ICardSearchProjectionPort):
+class MongoCardProjection(ICardSearchProjectionPort, ICardProjectionWriter):
     """Adaptador de proyecciones desnormalizadas de catálogo en MongoDB (RNF-ALM-01, US 2.1.2)."""
 
     COLLECTION_NAME = "cards_projection"
@@ -17,7 +19,7 @@ class MongoCardProjection(ICardSearchProjectionPort):
         self.collection = self.db[self.COLLECTION_NAME]
 
     async def sync_card_projection(self, card: Card) -> None:
-        """Inserta o actualiza el documento de proyección para búsquedas inmediatas sin joins."""
+        """Actualiza atómicamente solo si la versión recibida es la más reciente."""
         ability_dict = None
         if card.ability:
             ability_dict = {
@@ -38,9 +40,49 @@ class MongoCardProjection(ICardSearchProjectionPort):
             "image_url": card.image_url,
             "thumbnail_url": card.thumbnail_url,
             "ability": ability_dict,
+            "aggregate_version": card.version,
         }
+        await self._write_if_newer(card.id, card.version, doc)
 
-        await self.collection.replace_one({"_id": card.id}, doc, upsert=True)
+    async def project_versioned(self, event: OutboxClaimDTO) -> bool:
+        document = dict(event.payload)
+        document["_id"] = event.aggregate_id
+        document["aggregate_version"] = event.aggregate_version
+        fields = {key: value for key, value in document.items() if key != "_id"}
+        try:
+            result = await self.collection.update_one(
+                {
+                    "_id": event.aggregate_id,
+                    "$or": [
+                        {"aggregate_version": {"$lt": event.aggregate_version}},
+                        {"aggregate_version": {"$exists": False}},
+                    ],
+                },
+                {"$set": fields},
+                upsert=True,
+            )
+            return result.matched_count > 0 or result.upserted_id is not None
+        except DuplicateKeyError:
+            # A concurrent event already inserted a newer/equal version for this _id.
+            return False
+
+    async def _write_if_newer(self, card_id: str, version: int, document: dict[str, Any]) -> None:
+        fields = {key: value for key, value in document.items() if key != "_id"}
+        try:
+            await self.collection.update_one(
+                {
+                    "_id": card_id,
+                    "$or": [
+                        {"aggregate_version": {"$lt": version}},
+                        {"aggregate_version": {"$exists": False}},
+                    ],
+                },
+                {"$set": fields},
+                upsert=True,
+            )
+        except DuplicateKeyError:
+            # Duplicate _id means a concurrent writer has an equal or newer version.
+            return
 
     async def search_cards(
         self,

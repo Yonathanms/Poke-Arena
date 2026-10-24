@@ -1,5 +1,6 @@
 """Servicio genérico de Idempotencia para endpoints de escritura (RNF-INT-01, DA-01)."""
 
+import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -23,7 +24,8 @@ class IdempotencyService:
         """Retorna la respuesta almacenada si la llave ya fue procesada."""
         stmt = select(IdempotencyRecordModel).where(
             IdempotencyRecordModel.idempotency_key == idempotency_key,
-            IdempotencyRecordModel.endpoint == endpoint,
+            IdempotencyRecordModel.operation == endpoint,
+            IdempotencyRecordModel.actor_id == "__legacy__",
         )
         result = await self.db.execute(stmt)
         record = result.scalar_one_or_none()
@@ -43,8 +45,12 @@ class IdempotencyService:
     ) -> None:
         """Almacena la respuesta generada para responder a solicitudes idénticas futuras."""
         record = IdempotencyRecordModel(
+            id=str(uuid.uuid4()),
+            actor_id="__legacy__",
+            operation=endpoint,
             idempotency_key=idempotency_key,
             endpoint=endpoint,
+            request_hash="0" * 64,
             response_status=response_status,
             response_body=response_body,
         )

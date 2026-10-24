@@ -1,5 +1,6 @@
 import json
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -8,12 +9,16 @@ from fastapi import (
     Form,
     Header,
     Query,
+    Request,
+    Response,
     UploadFile,
     status,
 )
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from src.modules.content.application.use_cases.create_card import (
+    AuthenticatedCardActor,
     CreateCardCommand,
     CreateCardUseCase,
 )
@@ -21,60 +26,44 @@ from src.modules.content.application.use_cases.create_location import (
     CreateLocationCommand,
     CreateLocationUseCase,
 )
+from src.modules.content.application.use_cases.list_abilities import ListCardAbilitiesUseCase
 from src.modules.content.application.use_cases.list_locations import ListLocationsUseCase
+from src.modules.content.application.use_cases.process_durable_work import (
+    GetCardImageStatusUseCase,
+)
 from src.modules.content.application.use_cases.search_cards import (
     SearchCardsQuery,
     SearchCardsUseCase,
 )
 from src.modules.content.composition import (
+    get_authenticated_card_actor,
+    get_card_image_status_use_case,
     get_create_card_use_case,
     get_create_location_use_case,
     get_idempotency_service,
+    get_list_card_abilities_use_case,
     get_list_locations_use_case,
     get_search_cards_use_case,
 )
-from src.modules.content.domain.entities import Card, Location
+from src.modules.content.domain.entities import Location
+from src.modules.content.domain.exceptions import CardNotFoundError
 from src.modules.content.domain.value_objects import (
-    AbilitySpec,
-    AbilityType,
+    AbilityCode,
     CardRarity,
     CardType,
     LocationEffectSpec,
     LocationEffectType,
 )
 from src.modules.content.presentation.schemas import (
-    CardResponse,
+    CardAbilitySummaryResponse,
+    CardCreatedResponse,
+    CardImageStatusResponse,
     LocationResponse,
     SearchCardsResponse,
 )
 from src.shared.application.ports import IIdempotencyService
 
 content_router = APIRouter(prefix="/content")
-
-
-# ------------------------------------------------------------------------------
-# Mapeo Dominio -> DTO de respuesta HTTP
-# ------------------------------------------------------------------------------
-def _card_to_response(card: Card) -> CardResponse:
-    ability_schema = None
-    if card.ability:
-        ability_schema = {
-            "ability_type": card.ability.ability_type,
-            "description": card.ability.description,
-            "params": card.ability.params,
-        }
-    return CardResponse(
-        id=card.id,
-        code=card.code,
-        name=card.name,
-        cost=card.cost,
-        power=card.power,
-        card_type=card.card_type,
-        rarity=card.rarity,
-        image_url=card.image_url,
-        thumbnail_url=card.thumbnail_url,
-        ability=ability_schema,
-    )
 
 
 def _location_to_response(location: Location) -> LocationResponse:
@@ -100,67 +89,133 @@ def _location_to_response(location: Location) -> LocationResponse:
 # ------------------------------------------------------------------------------
 @content_router.post(
     "/cards",
-    response_model=CardResponse,
+    response_model=CardCreatedResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["Cards"],
     summary="Crear una nueva carta en el catálogo",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Solicitud malformada."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Credencial ausente o inválida."},
+        status.HTTP_403_FORBIDDEN: {"description": "Se requiere permiso de administrador."},
+        status.HTTP_409_CONFLICT: {"description": "Conflicto de idempotencia o capacidad."},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Campos o archivo inválidos."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Error interno sanitizado."},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Identity, PostgreSQL o almacenamiento no disponibles."
+        },
+    },
 )
 async def create_card(
-    code: Annotated[str, Form(description="Código oficial ej: PKA-FUE-001")],
+    request: Request,
+    response: Response,
     name: Annotated[str, Form(description="Nombre del Pokémon")],
-    cost: Annotated[int, Form(description="Costo de energía [1..6]")],
+    cost: Annotated[int, Form(description="Costo de energía [0..10]")],
     power: Annotated[int, Form(description="Poder de la carta")],
     card_type: Annotated[CardType, Form(description="Tipo elemental")],
     rarity: Annotated[CardRarity, Form(description="Rareza")],
-    image: Annotated[UploadFile, File(description="Imagen proporción 5:7")],
-    ability_type: Annotated[AbilityType | None, Form()] = None,
-    ability_description: Annotated[str | None, Form()] = None,
-    ability_params_json: Annotated[str | None, Form()] = None,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ability_code: Annotated[str, Form()],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
+    image: Annotated[
+        UploadFile | None, File(description="Imagen opcional; se integrará en V2")
+    ] = None,
+    actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
     use_case: CreateCardUseCase = Depends(get_create_card_use_case),
-    idempotency_service: IIdempotencyService = Depends(get_idempotency_service),
-) -> Any:
-    if idempotency_key:
-        cached = await idempotency_service.get_recorded_response(
-            idempotency_key, "/api/v1/content/cards"
+) -> CardCreatedResponse:
+    allowed_fields = {
+        "name",
+        "cost",
+        "power",
+        "card_type",
+        "rarity",
+        "image",
+        "ability_code",
+    }
+    unexpected_fields = set((await request.form()).keys()) - allowed_fields
+    if unexpected_fields:
+        raise RequestValidationError(
+            [
+                {
+                    "loc": ("body", field),
+                    "msg": "Campo no permitido por el contrato de Crear Carta.",
+                    "type": "extra_forbidden",
+                }
+                for field in sorted(unexpected_fields)
+            ]
         )
-        if cached:
-            return JSONResponse(content=cached["body"], status_code=cached["status_code"])
-
-    image_bytes = await image.read()
-
-    ability: AbilitySpec | None = None
-    if ability_type and ability_type != AbilityType.NINGUNA:
-        params = json.loads(ability_params_json) if ability_params_json else {}
-        ability = AbilitySpec(
-            ability_type=ability_type,
-            description=ability_description or "",
-            params=params,
-        )
-
-    card = await use_case.execute(
+    image_bytes = await image.read() if image is not None else None
+    result = await use_case.execute(
         CreateCardCommand(
-            code=code,
             name=name,
             cost=cost,
             power=power,
             card_type=card_type,
             rarity=rarity,
+            ability_code=AbilityCode(ability_code),
             image_bytes=image_bytes,
-            ability=ability,
+            actor=actor,
+            idempotency_key=idempotency_key,
         )
     )
-    response_dto = _card_to_response(card)
+    response.headers["Location"] = result.snapshot.status_url
+    return CardCreatedResponse.model_validate(result.snapshot.as_json())
 
-    if idempotency_key:
-        await idempotency_service.record_response(
-            idempotency_key,
-            "/api/v1/content/cards",
-            status.HTTP_201_CREATED,
-            response_dto.model_dump(),
+
+@content_router.get(
+    "/abilities",
+    response_model=list[CardAbilitySummaryResponse],
+    status_code=status.HTTP_200_OK,
+    tags=["Cards"],
+    summary="Listar habilidades seleccionables al crear una carta",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "Credencial ausente o inválida."},
+        status.HTTP_403_FORBIDDEN: {"description": "Se requiere permiso de administrador."},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Identity o PostgreSQL no disponibles."
+        },
+    },
+)
+async def list_card_abilities(
+    _actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
+    use_case: ListCardAbilitiesUseCase = Depends(get_list_card_abilities_use_case),
+) -> list[CardAbilitySummaryResponse]:
+    abilities = await use_case.execute()
+    return [
+        CardAbilitySummaryResponse(
+            code=ability.code,
+            name=ability.name,
+            trigger=ability.trigger,
+            effect=ability.effect,
+            affected_card_type=ability.affected_card_type,
+            parameters=ability.parameters,
         )
+        for ability in abilities
+    ]
 
-    return response_dto
+
+@content_router.get(
+    "/cards/{card_id}/image-status",
+    response_model=CardImageStatusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Cards"],
+    summary="Consultar el estado actual de las imágenes de una carta",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "Credencial ausente o inválida."},
+        status.HTTP_403_FORBIDDEN: {"description": "Se requiere permiso de administrador."},
+        status.HTTP_404_NOT_FOUND: {"description": "La carta no existe."},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Identity o PostgreSQL no disponibles."
+        },
+    },
+)
+async def get_card_image_status(
+    card_id: UUID,
+    _actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
+    use_case: GetCardImageStatusUseCase = Depends(get_card_image_status_use_case),
+) -> CardImageStatusResponse:
+    result = await use_case.execute(str(card_id))
+    if result is None:
+        raise CardNotFoundError(str(card_id))
+    return CardImageStatusResponse.model_validate(result.__dict__)
 
 
 # ------------------------------------------------------------------------------
