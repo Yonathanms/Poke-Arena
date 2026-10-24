@@ -14,6 +14,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 
 from src.modules.content.application.use_cases.create_card import (
+    AuthenticatedCardActor,
     CreateCardCommand,
     CreateCardUseCase,
 )
@@ -27,54 +28,29 @@ from src.modules.content.application.use_cases.search_cards import (
     SearchCardsUseCase,
 )
 from src.modules.content.composition import (
+    get_authenticated_card_actor,
     get_create_card_use_case,
     get_create_location_use_case,
     get_idempotency_service,
     get_list_locations_use_case,
     get_search_cards_use_case,
 )
-from src.modules.content.domain.entities import Card, Location
+from src.modules.content.domain.entities import Location
 from src.modules.content.domain.value_objects import (
-    AbilitySpec,
-    AbilityType,
+    AbilityCode,
     CardRarity,
     CardType,
     LocationEffectSpec,
     LocationEffectType,
 )
 from src.modules.content.presentation.schemas import (
-    CardResponse,
+    CardCreatedResponse,
     LocationResponse,
     SearchCardsResponse,
 )
 from src.shared.application.ports import IIdempotencyService
 
 content_router = APIRouter(prefix="/content")
-
-
-# ------------------------------------------------------------------------------
-# Mapeo Dominio -> DTO de respuesta HTTP
-# ------------------------------------------------------------------------------
-def _card_to_response(card: Card) -> CardResponse:
-    ability_schema = None
-    if card.ability:
-        ability_schema = {
-            "ability_type": card.ability.ability_type,
-            "description": card.ability.description,
-            "params": card.ability.params,
-        }
-    return CardResponse(
-        id=card.id,
-        code=card.code,
-        name=card.name,
-        cost=card.cost,
-        power=card.power,
-        card_type=card.card_type,
-        rarity=card.rarity,
-        image_url=card.image_url,
-        thumbnail_url=card.thumbnail_url,
-        ability=ability_schema,
-    )
 
 
 def _location_to_response(location: Location) -> LocationResponse:
@@ -100,67 +76,38 @@ def _location_to_response(location: Location) -> LocationResponse:
 # ------------------------------------------------------------------------------
 @content_router.post(
     "/cards",
-    response_model=CardResponse,
+    response_model=CardCreatedResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["Cards"],
     summary="Crear una nueva carta en el catálogo",
 )
 async def create_card(
-    code: Annotated[str, Form(description="Código oficial ej: PKA-FUE-001")],
     name: Annotated[str, Form(description="Nombre del Pokémon")],
-    cost: Annotated[int, Form(description="Costo de energía [1..6]")],
+    cost: Annotated[int, Form(description="Costo de energía [0..10]")],
     power: Annotated[int, Form(description="Poder de la carta")],
     card_type: Annotated[CardType, Form(description="Tipo elemental")],
     rarity: Annotated[CardRarity, Form(description="Rareza")],
     image: Annotated[UploadFile, File(description="Imagen proporción 5:7")],
-    ability_type: Annotated[AbilityType | None, Form()] = None,
-    ability_description: Annotated[str | None, Form()] = None,
-    ability_params_json: Annotated[str | None, Form()] = None,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ability_code: Annotated[str, Form()],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
+    actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
     use_case: CreateCardUseCase = Depends(get_create_card_use_case),
-    idempotency_service: IIdempotencyService = Depends(get_idempotency_service),
-) -> Any:
-    if idempotency_key:
-        cached = await idempotency_service.get_recorded_response(
-            idempotency_key, "/api/v1/content/cards"
-        )
-        if cached:
-            return JSONResponse(content=cached["body"], status_code=cached["status_code"])
-
+) -> CardCreatedResponse:
     image_bytes = await image.read()
-
-    ability: AbilitySpec | None = None
-    if ability_type and ability_type != AbilityType.NINGUNA:
-        params = json.loads(ability_params_json) if ability_params_json else {}
-        ability = AbilitySpec(
-            ability_type=ability_type,
-            description=ability_description or "",
-            params=params,
-        )
-
-    card = await use_case.execute(
+    result = await use_case.execute(
         CreateCardCommand(
-            code=code,
             name=name,
             cost=cost,
             power=power,
             card_type=card_type,
             rarity=rarity,
+            ability_code=AbilityCode(ability_code),
             image_bytes=image_bytes,
-            ability=ability,
+            actor=actor,
+            idempotency_key=idempotency_key,
         )
     )
-    response_dto = _card_to_response(card)
-
-    if idempotency_key:
-        await idempotency_service.record_response(
-            idempotency_key,
-            "/api/v1/content/cards",
-            status.HTTP_201_CREATED,
-            response_dto.model_dump(),
-        )
-
-    return response_dto
+    return CardCreatedResponse.model_validate(result.snapshot.as_json())
 
 
 # ------------------------------------------------------------------------------

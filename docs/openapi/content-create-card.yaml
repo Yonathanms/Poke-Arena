@@ -1,0 +1,569 @@
+openapi: 3.0.3
+info:
+  title: Poké-Arena Content API — Crear Carta
+  version: 1.0.0
+  description: >-
+    Contrato de la historia Crear Carta (F-02, US 2.1.1). La carta se registra
+    para administración con estado de imagen PENDING. Solo queda disponible
+    para jugadores cuando el original y la miniatura están almacenados y el
+    estado cambia a READY. Cada tipo admite códigos 001–999 (5.994 en total);
+    esta capacidad no alcanza el objetivo de 10.000 cartas indicado en el
+    diseño y requiere una decisión del Product Owner antes de afirmar ese
+    volumen.
+servers:
+  - url: /api/v1
+    description: API versionada de Poké-Arena
+tags:
+  - name: Content Cards
+    description: Creación administrativa de cartas y seguimiento de sus imágenes
+paths:
+  /content/cards:
+    post:
+      tags:
+        - Content Cards
+      operationId: createCard
+      summary: Crear una carta
+      description: >-
+        Crea una carta y encola el procesamiento durable de su miniatura. El
+        código lo asigna el servidor y la habilidad se selecciona por el código
+        de una definición existente. Los campos legacy `code`, `ability_type`,
+        `ability_description` y `ability_params_json` no forman parte de este
+        contrato y deben rechazarse con 422 para identificar clientes
+        desactualizados. La respuesta idempotente conserva el snapshot inicial
+        201/PENDING; use el enlace de estado para consultar el estado actual.
+      security:
+        - PlatformBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateCardRequest'
+            encoding:
+              image:
+                contentType: image/png, image/jpeg, image/webp
+      responses:
+        '201':
+          description: Carta registrada; el procesamiento de la miniatura está pendiente.
+          headers:
+            Location:
+              description: URI relativa para consultar el estado actual de las imágenes.
+              schema:
+                type: string
+                format: uri-reference
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardCreatedResponse'
+              example:
+                id: 6bd2cb40-8e5a-4512-a8e1-c1bd8cbd2f7b
+                code: PKA-FUE-001
+                name: Nombre
+                cost: 2
+                power: -1
+                card_type: FUE
+                rarity: COMUN
+                ability:
+                  code: HAB-000
+                  name: Sin Habilidad
+                  trigger: null
+                  effect: null
+                  affected_card_type: null
+                  parameters: {}
+                image_status: PENDING
+                image_url: null
+                thumbnail_url: null
+                available_to_players: false
+                status_url: /api/v1/content/cards/6bd2cb40-8e5a-4512-a8e1-c1bd8cbd2f7b/image-status
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /content/cards/{card_id}/image-status:
+    get:
+      tags:
+        - Content Cards
+      operationId: getCardImageStatus
+      summary: Consultar el estado de las imágenes de una carta
+      description: >-
+        Consulta el estado actual en el primario SQL. Disponible únicamente
+        para administradores. Las URLs de imagen se incluyen cuando están
+        disponibles; mientras el estado no sea READY, la carta no está
+        disponible para jugadores.
+      security:
+        - PlatformBearerAuth: []
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          description: Identificador UUID asignado a la carta.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Estado actual y ficha de la carta.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardImageStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  securitySchemes:
+    PlatformBearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Credencial propia de Poké-Arena. La emisión y validación del token son
+        responsabilidad del contrato público del módulo Identity. No se acepta
+        directamente un token de Google como credencial de plataforma.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Llave no vacía de hasta 128 caracteres. Su ámbito es el actor autenticado
+        y la operación. Repetir llave y payload devuelve la respuesta original;
+        reutilizarla con otro payload produce 409.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+
+  headers:
+    CorrelationId:
+      description: Identificador de correlación de la solicitud.
+      schema:
+        type: string
+
+  schemas:
+    CreateCardRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - cost
+        - power
+        - card_type
+        - rarity
+        - ability_code
+        - image
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Nombre obligatorio; el servidor elimina espacios externos y rechaza blancos.
+        cost:
+          type: integer
+          minimum: 0
+          maximum: 10
+        power:
+          type: integer
+          minimum: -20
+          maximum: 20
+          description: Admite valores negativos.
+        card_type:
+          $ref: '#/components/schemas/CardType'
+        rarity:
+          $ref: '#/components/schemas/CardRarity'
+        ability_code:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: Código de una habilidad existente; HAB-000 es una selección válida explícita.
+          example: HAB-000
+        image:
+          type: string
+          format: binary
+          description: >-
+            Un único archivo PNG, JPG/JPEG o WebP. Máximo 5.000.000 bytes,
+            proporción exacta 5:7 y resolución mínima 600 × 840 píxeles.
+
+    CardType:
+      type: string
+      enum:
+        - FUE
+        - AGU
+        - PLA
+        - ELE
+        - PSI
+        - LUC
+
+    CardRarity:
+      type: string
+      enum:
+        - COMUN
+        - POCO_COMUN
+        - RARA
+        - LEGENDARIA
+
+    ImageStatus:
+      type: string
+      enum:
+        - PENDING
+        - PROCESSING
+        - RETRY_PENDING
+        - READY
+        - FAILED
+
+    AbilitySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - trigger
+        - effect
+        - affected_card_type
+        - parameters
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 30
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        trigger:
+          type: string
+          nullable: true
+          description: Disparador de la definición existente; null para HAB-000.
+        effect:
+          type: string
+          nullable: true
+          description: Efecto de la definición existente; null para HAB-000.
+        affected_card_type:
+          allOf:
+            - $ref: '#/components/schemas/CardType'
+          nullable: true
+        parameters:
+          type: object
+          description: Parámetros tipados pertenecientes a la habilidad existente.
+          additionalProperties: true
+
+    CardCreatedResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - cost
+        - power
+        - card_type
+        - rarity
+        - ability
+        - image_status
+        - image_url
+        - thumbnail_url
+        - available_to_players
+        - status_url
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          pattern: '^PKA-(FUE|AGU|PLA|ELE|PSI|LUC)-(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2})$'
+          readOnly: true
+        name:
+          type: string
+        cost:
+          type: integer
+          minimum: 0
+          maximum: 10
+        power:
+          type: integer
+          minimum: -20
+          maximum: 20
+        card_type:
+          $ref: '#/components/schemas/CardType'
+        rarity:
+          $ref: '#/components/schemas/CardRarity'
+        ability:
+          $ref: '#/components/schemas/AbilitySummary'
+        image_status:
+          allOf:
+            - $ref: '#/components/schemas/ImageStatus'
+          description: Siempre PENDING en la respuesta inicial de creación.
+        image_url:
+          type: string
+          format: uri-reference
+          nullable: true
+        thumbnail_url:
+          type: string
+          format: uri-reference
+          nullable: true
+        available_to_players:
+          type: boolean
+          enum:
+            - false
+          description: Siempre false hasta que original y miniatura estén listos.
+        status_url:
+          type: string
+          format: uri-reference
+
+    CardImageStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - cost
+        - power
+        - card_type
+        - rarity
+        - ability
+        - image_status
+        - image_url
+        - thumbnail_url
+        - available_to_players
+        - status_url
+        - attempts
+        - last_error
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          pattern: '^PKA-(FUE|AGU|PLA|ELE|PSI|LUC)-(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2})$'
+        name:
+          type: string
+        cost:
+          type: integer
+          minimum: 0
+          maximum: 10
+        power:
+          type: integer
+          minimum: -20
+          maximum: 20
+        card_type:
+          $ref: '#/components/schemas/CardType'
+        rarity:
+          $ref: '#/components/schemas/CardRarity'
+        ability:
+          $ref: '#/components/schemas/AbilitySummary'
+        image_status:
+          $ref: '#/components/schemas/ImageStatus'
+        image_url:
+          type: string
+          format: uri-reference
+          nullable: true
+          description: URL disponible cuando el original está listo para consulta.
+        thumbnail_url:
+          type: string
+          format: uri-reference
+          nullable: true
+          description: URL disponible cuando el estado es READY.
+        available_to_players:
+          type: boolean
+          description: true únicamente cuando ambas imágenes durables están listas.
+        status_url:
+          type: string
+          format: uri-reference
+        attempts:
+          type: integer
+          minimum: 0
+          description: Número de intentos del ciclo de procesamiento actual.
+        last_error:
+          type: string
+          nullable: true
+          description: Diagnóstico sanitizado; null si no hay un fallo que reportar.
+
+    ErrorDetail:
+      type: object
+      additionalProperties: true
+      required:
+        - field
+        - issue
+      properties:
+        field:
+          type: string
+        issue:
+          type: string
+
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required:
+            - code
+            - message
+            - details
+            - correlation_id
+            - timestamp
+          properties:
+            code:
+              type: string
+              minLength: 1
+            message:
+              type: string
+              minLength: 1
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+            correlation_id:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+
+  responses:
+    BadRequest:
+      description: Solicitud HTTP malformada que no se puede interpretar.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Credencial ausente, inválida o expirada.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: Esquema de autenticación requerido.
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Principal autenticado sin permiso de administrador.
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: No existe la carta solicitada.
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: >-
+        Conflicto de idempotencia (misma llave con otro payload) o capacidad
+        agotada para el tipo de carta. El formato aprobado admite 999 códigos
+        por tipo y 5.994 en total; el objetivo de 10.000 cartas sigue pendiente
+        de decisión del Product Owner.
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            idempotencyConflict:
+              summary: La llave ya se utilizó con otro contenido
+              value:
+                error:
+                  code: IDEMPOTENCY_KEY_REUSED
+                  message: La llave de idempotencia ya se utilizó con otra solicitud.
+                  details:
+                    - field: Idempotency-Key
+                      issue: Use una llave nueva para un contenido diferente.
+                  correlation_id: 5a67ad91-8081-42c1-864a-bdcfc3dcc421
+                  timestamp: '2026-10-23T18:00:00Z'
+            codeCapacityExhausted:
+              summary: No hay más códigos disponibles para el tipo
+              value:
+                error:
+                  code: CATALOG_CODE_CAPACITY_EXHAUSTED
+                  message: Se agotaron los códigos disponibles para este tipo de carta.
+                  details:
+                    - field: card_type
+                      issue: No es posible asignar otro código para este tipo.
+                  correlation_id: 5a67ad91-8081-42c1-864a-bdcfc3dcc421
+                  timestamp: '2026-10-23T18:00:00Z'
+    ValidationError:
+      description: >-
+        Campo, valor, archivo, habilidad o asociación inválidos. Incluye los
+        campos legacy retirados y los archivos que incumplan formato, tamaño,
+        proporción o resolución.
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: CATALOG_INVALID_CARD_COST
+              message: El costo de la carta debe ser un número entero entre 0 y 10.
+              details:
+                - field: cost
+                  issue: Valor fuera del rango permitido.
+              correlation_id: 5a67ad91-8081-42c1-864a-bdcfc3dcc421
+              timestamp: '2026-10-23T18:00:00Z'
+    InternalError:
+      description: Error interno sanitizado y correlacionado, sin trazas ni datos internos.
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServiceUnavailable:
+      description: >-
+        Identity, PostgreSQL primario o almacenamiento del original no
+        disponible, o espera transaccional agotada sin confirmar la aceptación.
+      headers:
+        X-Correlation-ID:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

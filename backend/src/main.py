@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -6,10 +7,12 @@ from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from src.modules.content.infrastructure.workers import run_content_workers
 from src.modules.content.presentation.routers import content_router
 from src.shared.domain.correlation import get_current_correlation_id
 from src.shared.infrastructure.config import get_settings
 from src.shared.infrastructure.database import (
+    AsyncWriteSessionLocal,
     Base,
     read_engine,
     write_engine,
@@ -44,9 +47,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await mongo_db["cards_projection"].create_index([("cost", 1)])
     await mongo_db["cards_projection"].create_index([("code", 1)], unique=True)
 
+    content_workers = asyncio.create_task(
+        run_content_workers(AsyncWriteSessionLocal, mongo_db),
+        name="content-durable-workers",
+    )
+
     yield
 
     # 3. Shutdown: Cerrar conexiones
+    content_workers.cancel()
+    try:
+        await content_workers
+    except asyncio.CancelledError:
+        pass
     close_mongo_connection()
     await write_engine.dispose()
     await read_engine.dispose()

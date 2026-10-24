@@ -8,21 +8,38 @@ Si cambia una tecnología (ej. Azure Blob en vez de disco local) o el cableado
 de la arquitectura, el cambio se limita a este archivo.
 """
 
+from dataclasses import dataclass
 from typing import Any
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.modules.content.application.use_cases.create_card import CreateCardUseCase
+from src.modules.content.application.use_cases.create_card import (
+    AuthenticatedCardActor,
+    CreateCardUseCase,
+)
 from src.modules.content.application.use_cases.create_location import CreateLocationUseCase
 from src.modules.content.application.use_cases.list_locations import ListLocationsUseCase
 from src.modules.content.application.use_cases.search_cards import SearchCardsUseCase
 from src.modules.content.infrastructure.repositories.mongo_card_projection import (
     MongoCardProjection,
 )
+from src.modules.content.infrastructure.repositories.sql_ability_repository import (
+    SqlAbilityRepository,
+)
+from src.modules.content.infrastructure.repositories.sql_card_code_allocator import (
+    SqlCardCodeAllocator,
+)
+from src.modules.content.infrastructure.repositories.sql_card_image_repository import (
+    SqlCardImageRepository,
+)
 from src.modules.content.infrastructure.repositories.sql_card_repository import (
     SqlCardRepository,
+)
+from src.modules.content.infrastructure.repositories.sql_creation_records import (
+    SqlCardCreationIdempotencyAdapter,
+    SqlOutboxWriter,
 )
 from src.modules.content.infrastructure.repositories.sql_location_repository import (
     SqlLocationRepository,
@@ -32,22 +49,60 @@ from src.modules.content.infrastructure.services.pillow_image_processor import (
 )
 from src.modules.content.infrastructure.unit_of_work import SqlUnitOfWork
 from src.shared.application.ports import IIdempotencyService
-from src.shared.infrastructure.database import get_read_db, get_write_db
+from src.shared.infrastructure.database import (
+    AsyncWriteSessionLocal,
+    get_read_db,
+    get_write_db,
+)
 from src.shared.infrastructure.idempotency import IdempotencyService
 from src.shared.infrastructure.mongo import get_mongo_db
 from src.shared.infrastructure.storage import get_file_storage
 
 
+def get_authenticated_card_actor() -> AuthenticatedCardActor:
+    """Identity aún no publica su contrato de actor para presentación."""
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="La autenticación de plataforma aún no está integrada.",
+    )
+
+
+@dataclass(frozen=True)
+class CardPersistenceAdapters:
+    """Adaptadores de escritura de Carta sobre una única sesión/UoW."""
+
+    uow: SqlUnitOfWork
+    card_repository: SqlCardRepository
+    code_allocator: SqlCardCodeAllocator
+    ability_repository: SqlAbilityRepository
+    image_repository: SqlCardImageRepository
+
+
+def build_card_persistence_adapters(session: AsyncSession) -> CardPersistenceAdapters:
+    """Construye todos los adaptadores transaccionales sobre la misma sesión."""
+    return CardPersistenceAdapters(
+        uow=SqlUnitOfWork(session),
+        card_repository=SqlCardRepository(session),
+        code_allocator=SqlCardCodeAllocator(session),
+        ability_repository=SqlAbilityRepository(session),
+        image_repository=SqlCardImageRepository(session),
+    )
+
+
 def get_create_card_use_case(
     db: AsyncSession = Depends(get_write_db),
-    mongo_db: AsyncIOMotorDatabase[Any] = Depends(get_mongo_db),
 ) -> CreateCardUseCase:
     """Escritura: requiere WriteSession (Master SQL) - Regla 5."""
+    persistence = build_card_persistence_adapters(db)
     return CreateCardUseCase(
-        uow=SqlUnitOfWork(db),
-        card_repo=SqlCardRepository(db),
-        projection_port=MongoCardProjection(mongo_db),
-        image_processor=PillowImageProcessor(),
+        uow=persistence.uow,
+        card_repo=persistence.card_repository,
+        code_allocator=persistence.code_allocator,
+        ability_repo=persistence.ability_repository,
+        image_repo=persistence.image_repository,
+        idempotency=SqlCardCreationIdempotencyAdapter(db, AsyncWriteSessionLocal),
+        outbox=SqlOutboxWriter(db),
+        image_inspector=PillowImageProcessor(),
         file_storage=get_file_storage(),
     )
 

@@ -6,19 +6,26 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from src.modules.content.infrastructure.models import CardModel, LocationModel  # noqa: F401
+from src.modules.content.infrastructure.models import (  # noqa: F401
+    AbilityModel,
+    CardCodeCounterModel,
+    CardImageModel,
+    CardModel,
+    LocationModel,
+)
 from src.shared.infrastructure.config import get_settings
 from src.shared.infrastructure.database import Base
 from src.shared.infrastructure.models import IdempotencyRecordModel, OutboxModel  # noqa: F401
 
 config = context.config
-settings = get_settings()
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", settings.DATABASE_WRITE_URL)
+if config.attributes.get("connection") is None:
+    settings = get_settings()
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_WRITE_URL)
 
 
 def run_migrations_offline() -> None:
@@ -42,6 +49,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    settings = get_settings()
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.DATABASE_WRITE_URL
 
@@ -58,7 +66,11 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        do_run_migrations(connection)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

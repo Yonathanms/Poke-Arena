@@ -1,32 +1,49 @@
+"""Adaptador SQLAlchemy para guardar y reconstruir entidades Card."""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from src.modules.content.application.ports import ICardRepository
 from src.modules.content.domain.entities import Card
+from src.modules.content.domain.exceptions import (
+    AbilityNotFoundError,
+    AbilityRequiredError,
+    CardImageRecordRequiredError,
+)
 from src.modules.content.domain.value_objects import (
+    AbilityCode,
     AbilitySpec,
     AbilityType,
+    CardImageFormat,
+    CardImageMetadata,
+    CardImageState,
     CardRarity,
+    CardThumbnailMetadata,
     CardType,
 )
-from src.modules.content.infrastructure.models import CardModel
+from src.modules.content.infrastructure.models import AbilityModel, CardModel
 
 
 class SqlCardRepository(ICardRepository):
-    """Repositorio relacional de cartas utilizando SQLAlchemy 2.0 (PostgreSQL)."""
+    """El repositorio comparte la sesión y nunca confirma la transacción."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def save(self, card: Card) -> None:
-        ability_dict = None
-        if card.ability:
-            ability_dict = {
-                "ability_type": card.ability.ability_type.value,
-                "description": card.ability.description,
-                "params": card.ability.params,
-            }
+    async def save(self, card: Card, image_record_id: str | None = None) -> None:
+        if image_record_id is None:
+            raise CardImageRecordRequiredError()
+        if card.ability_code is None:
+            raise AbilityRequiredError()
+        ability_result = await self.session.execute(
+            select(AbilityModel).where(AbilityModel.code == card.ability_code.value)
+        )
+        ability = ability_result.scalar_one_or_none()
+        if ability is None:
+            raise AbilityNotFoundError(card.ability_code.value)
 
+        # La FK de image_id valida también las inserciones concurrentes y datos internos.
         model = CardModel(
             id=card.id,
             code=card.code,
@@ -35,34 +52,65 @@ class SqlCardRepository(ICardRepository):
             power=card.power,
             card_type=card.card_type.value,
             rarity=card.rarity.value,
-            image_url=card.image_url,
-            thumbnail_url=card.thumbnail_url,
-            ability_spec=ability_dict,
+            ability_id=ability.id,
+            image_id=image_record_id,
+            version=1,
             created_at=card.created_at,
         )
         self.session.add(model)
+        await self.session.flush()
 
     async def get_by_id(self, card_id: str) -> Card | None:
-        stmt = select(CardModel).where(CardModel.id == card_id)
-        result = await self.session.execute(stmt)
+        result = await self.session.execute(
+            select(CardModel)
+            .options(joinedload(CardModel.ability), joinedload(CardModel.image))
+            .where(CardModel.id == card_id)
+        )
         model = result.scalar_one_or_none()
-        return self._to_entity(model) if model else None
+        return self._to_entity(model) if model is not None else None
 
     async def get_by_code(self, code: str) -> Card | None:
-        stmt = select(CardModel).where(CardModel.code == code.upper())
-        result = await self.session.execute(stmt)
+        result = await self.session.execute(
+            select(CardModel)
+            .options(joinedload(CardModel.ability), joinedload(CardModel.image))
+            .where(CardModel.code == code.upper())
+        )
         model = result.scalar_one_or_none()
-        return self._to_entity(model) if model else None
+        return self._to_entity(model) if model is not None else None
 
-    def _to_entity(self, model: CardModel) -> Card:
-        ability = None
-        if model.ability_spec:
-            ability = AbilitySpec(
-                ability_type=AbilityType(model.ability_spec.get("ability_type", "HAB-000")),
-                description=model.ability_spec.get("description", ""),
-                params=model.ability_spec.get("params", {}),
+    @staticmethod
+    def _to_entity(model: CardModel) -> Card:
+        image = model.image
+        original_metadata = CardImageMetadata(
+            image_format=CardImageFormat(image.image_format),
+            byte_size=image.byte_size,
+            width=image.width,
+            height=image.height,
+        )
+        thumbnail_metadata = None
+        if image.thumbnail_format is not None:
+            if (
+                image.thumbnail_byte_size is None
+                or image.thumbnail_width is None
+                or image.thumbnail_height is None
+            ):
+                raise ValueError("La miniatura persistida tiene metadatos incompletos.")
+            thumbnail_metadata = CardThumbnailMetadata(
+                image_format=CardImageFormat(image.thumbnail_format),
+                byte_size=image.thumbnail_byte_size,
+                width=image.thumbnail_width,
+                height=image.thumbnail_height,
             )
 
+        ability_spec = (
+            AbilitySpec(
+                ability_type=AbilityType(model.ability.ability_type),
+                description=model.ability.description,
+                params=dict(model.ability.params),
+            )
+            if model.ability.has_effect
+            else None
+        )
         card = Card.create(
             code=model.code,
             name=model.name,
@@ -70,10 +118,15 @@ class SqlCardRepository(ICardRepository):
             power=model.power,
             card_type=CardType(model.card_type),
             rarity=CardRarity(model.rarity),
-            image_url=model.image_url,
-            thumbnail_url=model.thumbnail_url,
-            ability=ability,
+            image_url=image.original_storage_key,
+            thumbnail_url=image.thumbnail_storage_key,
+            ability=ability_spec,
+            ability_code=AbilityCode(model.ability.code),
+            image_state=CardImageState(image.state),
+            image_metadata=original_metadata,
+            thumbnail_metadata=thumbnail_metadata,
             card_id=model.id,
         )
         card.created_at = model.created_at
+        card.version = model.version
         return card

@@ -50,6 +50,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             http_status = status.HTTP_404_NOT_FOUND
         elif isinstance(exc, ConflictError):
             http_status = status.HTTP_409_CONFLICT
+        elif exc.code in {
+            "CARD_CREATION_OUTCOME_UNKNOWN",
+            "CARD_IMAGE_COMPENSATION_REQUIRED",
+        }:
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
 
         return _build_error_response(
             code=exc.code,

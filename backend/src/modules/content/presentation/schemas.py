@@ -35,6 +35,31 @@ class CardResponse(BaseModel):
     ability: AbilitySchema | None = None
 
 
+class CardAbilitySummaryResponse(BaseModel):
+    code: str
+    name: str
+    trigger: str | None
+    effect: str | None
+    affected_card_type: CardType | None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class CardCreatedResponse(BaseModel):
+    id: str
+    code: str
+    name: str
+    cost: int
+    power: int
+    card_type: CardType
+    rarity: CardRarity
+    ability: CardAbilitySummaryResponse
+    image_status: str
+    image_url: str | None
+    thumbnail_url: str | None
+    available_to_players: bool
+    status_url: str
+
+
 class SearchCardsResponse(BaseModel):
     items: list[CardResponse]
     total: int
