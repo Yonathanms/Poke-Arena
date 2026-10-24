@@ -10,7 +10,8 @@ from pathlib import Path
 
 def test_domain_has_no_framework_dependencies() -> None:
     """Regla 2: El dominio no debe depender de FastAPI, SQLAlchemy, Motor ni infraestructura."""
-    domain_path = Path("src/modules/content/domain")
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    domain_path = base_dir / "src" / "modules" / "content" / "domain"
     prohibited_imports = {"fastapi", "sqlalchemy", "motor", "infrastructure", "presentation"}
 
     for py_file in domain_path.glob("*.py"):
@@ -33,5 +34,6 @@ def test_domain_has_no_framework_dependencies() -> None:
 
 def test_contracts_exists_in_content_module() -> None:
     """Regla 1 (RNF-ARQ-03): El módulo content debe exponer contracts.py como frontera pública."""
-    contracts_file = Path("src/modules/content/contracts.py")
-    assert contracts_file.exists(), "Falta contracts.py en src/modules/content/"
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    contracts_file = base_dir / "src" / "modules" / "content" / "contracts.py"
+    assert contracts_file.exists(), f"Falta contracts.py en {contracts_file}"
