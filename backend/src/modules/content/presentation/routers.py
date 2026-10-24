@@ -82,7 +82,7 @@ async def create_card(
     ability_params_json: Annotated[str | None, Form()] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     db: AsyncSession = Depends(get_write_db),
-    mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    mongo_db: AsyncIOMotorDatabase[Any] = Depends(get_mongo_db),
 ) -> Any:
     image_bytes = await image.read()
 
@@ -161,7 +161,7 @@ async def search_cards(
     rarity: Annotated[str | None, Query(description="Filtrar por rareza")] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    mongo_db: AsyncIOMotorDatabase[Any] = Depends(get_mongo_db),
 ) -> Any:
     projection_port = MongoCardProjection(mongo_db)
     use_case = SearchCardsUseCase(projection_port)
@@ -178,7 +178,7 @@ async def search_cards(
     )
 
     return SearchCardsResponse(
-        items=result.items,  # type: ignore[arg-type]
+        items=result.items,
         total=result.total,
         skip=result.skip,
         limit=result.limit,
@@ -238,11 +238,15 @@ async def create_location(
         name=location.name,
         image_url=location.image_url,
         thumbnail_url=location.thumbnail_url,
-        effect={
-            "effect_type": location.effect.effect_type,
-            "description": location.effect.description,
-            "params": location.effect.params,
-        },
+        effect=(
+            {
+                "effect_type": location.effect.effect_type,
+                "description": location.effect.description,
+                "params": location.effect.params,
+            }
+            if location.effect
+            else None
+        ),
     )
 
 
@@ -267,11 +271,15 @@ async def list_locations(
             name=loc.name,
             image_url=loc.image_url,
             thumbnail_url=loc.thumbnail_url,
-            effect={
-                "effect_type": loc.effect.effect_type,
-                "description": loc.effect.description,
-                "params": loc.effect.params,
-            },
+            effect=(
+                {
+                    "effect_type": loc.effect.effect_type,
+                    "description": loc.effect.description,
+                    "params": loc.effect.params,
+                }
+                if loc.effect
+                else None
+            ),
         )
         for loc in locations
     ]

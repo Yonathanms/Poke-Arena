@@ -11,7 +11,7 @@ class MongoCardProjection(ICardSearchProjectionPort):
 
     COLLECTION_NAME = "cards_projection"
 
-    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase[Any]) -> None:
         self.db = db
         self.collection = self.db[self.COLLECTION_NAME]
 

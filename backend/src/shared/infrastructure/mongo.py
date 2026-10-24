@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
@@ -6,10 +7,10 @@ from src.shared.infrastructure.config import get_settings
 
 settings = get_settings()
 
-_clients: dict[int, AsyncIOMotorClient] = {}
+_clients: dict[int, AsyncIOMotorClient[Any]] = {}
 
 
-def get_mongo_client() -> AsyncIOMotorClient:
+def get_mongo_client() -> AsyncIOMotorClient[Any]:
     """Retorna la instancia del cliente asíncrono Motor para el event loop actual."""
     try:
         loop = asyncio.get_running_loop()
@@ -22,7 +23,7 @@ def get_mongo_client() -> AsyncIOMotorClient:
     return _clients[loop_id]
 
 
-def get_mongo_db() -> AsyncIOMotorDatabase:
+def get_mongo_db() -> AsyncIOMotorDatabase[Any]:
     """Retorna la base de datos de MongoDB configurada en el loop activo."""
     client = get_mongo_client()
     return client[settings.MONGO_DB]
