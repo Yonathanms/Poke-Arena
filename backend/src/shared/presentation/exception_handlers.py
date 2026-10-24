@@ -92,13 +92,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             404: "NOT_FOUND",
             405: "METHOD_NOT_ALLOWED",
             429: "TOO_MANY_REQUESTS",
+            503: "SERVICE_UNAVAILABLE",
         }
         code = code_map.get(exc.status_code, "HTTP_ERROR")
-        return _build_error_response(
+        response = _build_error_response(
             code=code,
             message=str(exc.detail),
             status_code=exc.status_code,
         )
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

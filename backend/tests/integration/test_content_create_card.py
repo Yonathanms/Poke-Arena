@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
@@ -21,12 +22,22 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from alembic import command
+from src.main import app
 from src.modules.content.application.dtos import CardCreatedEventDTO, CreateCardResult
-from src.modules.content.application.ports import IOutboxWriter
+from src.modules.content.application.ports import ICardImageInspector, IOutboxWriter
 from src.modules.content.application.use_cases.create_card import (
     AuthenticatedCardActor,
     CreateCardCommand,
     CreateCardUseCase,
+)
+from src.modules.content.application.use_cases.list_abilities import ListCardAbilitiesUseCase
+from src.modules.content.application.use_cases.process_durable_work import (
+    GetCardImageStatusUseCase,
+)
+from src.modules.content.composition import (
+    get_card_image_status_use_case,
+    get_create_card_use_case,
+    get_list_card_abilities_use_case,
 )
 from src.modules.content.domain.exceptions import AbilityNotFoundError, IdempotencyKeyReusedError
 from src.modules.content.domain.value_objects import (
@@ -54,8 +65,17 @@ from src.modules.content.infrastructure.repositories.sql_creation_records import
     SqlCardCreationIdempotencyAdapter,
     SqlOutboxWriter,
 )
+from src.modules.content.infrastructure.repositories.sql_processing_transactions import (
+    SqlCardImageProcessingTransactions,
+)
+from src.modules.content.infrastructure.services.pillow_image_processor import (
+    PillowImageProcessor,
+)
 from src.modules.content.infrastructure.unit_of_work import SqlUnitOfWork
+from src.modules.identity.composition import register_identity_module
+from src.modules.identity.contracts import AuthenticatedPrincipal, InvalidAccessTokenError
 from src.shared.application.unit_of_work import IUnitOfWork
+from src.shared.infrastructure.config import get_settings
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_CONFIG = BACKEND_ROOT / "alembic.ini"
@@ -73,8 +93,13 @@ async def creation_database() -> AsyncIterator[
     tuple[AsyncEngine, async_sessionmaker[AsyncSession]]
 ]:
     url = os.getenv("CONTENT_MIGRATION_TEST_URL")
+    if not url and os.getenv("RUN_ISOLATED_POSTGRES_TESTS") == "1":
+        url = get_settings().DATABASE_WRITE_URL
     if not url:
-        pytest.skip("Defina CONTENT_MIGRATION_TEST_URL para pruebas PostgreSQL aisladas.")
+        pytest.skip(
+            "Defina CONTENT_MIGRATION_TEST_URL o RUN_ISOLATED_POSTGRES_TESTS=1 "
+            "para pruebas PostgreSQL aisladas."
+        )
     schema = f"content_create_test_{uuid.uuid4().hex}"
     admin = create_async_engine(url)
     async with admin.begin() as connection:
@@ -134,6 +159,7 @@ def _use_case(
     *,
     outbox: IOutboxWriter | None = None,
     uow: IUnitOfWork | None = None,
+    image_inspector: ICardImageInspector | None = None,
 ) -> CreateCardUseCase:
     return CreateCardUseCase(
         uow=uow or SqlUnitOfWork(session),
@@ -143,7 +169,7 @@ def _use_case(
         image_repo=SqlCardImageRepository(session),
         idempotency=SqlCardCreationIdempotencyAdapter(session, session_factory),
         outbox=outbox or SqlOutboxWriter(session),
-        image_inspector=FixedImageInspector(),
+        image_inspector=image_inspector or FixedImageInspector(),
         file_storage=storage,
     )
 
@@ -349,3 +375,134 @@ async def test_idempotent_replay_keeps_original_pending_snapshot_after_ready(
     assert replay.snapshot == original.snapshot
     assert replay.snapshot.image_status == CardImageState.PENDING.value
     assert replay.snapshot.available_to_players is False
+
+
+class Stage9IdentityContract:
+    async def authenticate(self, access_token: str) -> AuthenticatedPrincipal:
+        if access_token != "stage9-admin-token":
+            raise InvalidAccessTokenError()
+        return AuthenticatedPrincipal(
+            user_id="stage9-admin",
+            is_platform_admin=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_authenticated_create_card_without_image_api_flow_against_isolated_postgres(
+    creation_database: tuple[AsyncEngine, async_sessionmaker[AsyncSession]],
+) -> None:
+    engine, factory = creation_database
+    storage = MemoryStorage()
+    previous_identity = getattr(app.state, "identity_module_contract", None)
+    previous_identity_service = getattr(app.state, "identity_application_service", None)
+    register_identity_module(app, Stage9IdentityContract())
+
+    async def create_card_use_case_dependency() -> AsyncIterator[CreateCardUseCase]:
+        async with factory() as session:
+            yield _use_case(
+                session,
+                factory,
+                storage,
+                image_inspector=PillowImageProcessor(),
+            )
+
+    async def list_abilities_use_case_dependency() -> AsyncIterator[ListCardAbilitiesUseCase]:
+        async with factory() as session:
+            yield ListCardAbilitiesUseCase(SqlAbilityRepository(session))
+
+    app.dependency_overrides[get_create_card_use_case] = create_card_use_case_dependency
+    app.dependency_overrides[get_list_card_abilities_use_case] = list_abilities_use_case_dependency
+    app.dependency_overrides[get_card_image_status_use_case] = lambda: GetCardImageStatusUseCase(
+        SqlCardImageProcessingTransactions(factory)
+    )
+
+    headers = {"Authorization": "Bearer stage9-admin-token"}
+    form = {
+        "name": "Charmander API Stage 9",
+        "cost": "0",
+        "power": "-2",
+        "card_type": "FUE",
+        "rarity": "COMUN",
+        "ability_code": "HAB-000",
+    }
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            catalog_response = await client.get("/api/v1/content/abilities", headers=headers)
+            assert catalog_response.status_code == 200
+            assert any(ability["code"] == "HAB-000" for ability in catalog_response.json())
+
+            create_headers = {**headers, "Idempotency-Key": "stage9-create-001"}
+            created_response = await client.post(
+                "/api/v1/content/cards",
+                data=form,
+                headers=create_headers,
+            )
+            assert created_response.status_code == 201
+            created = created_response.json()
+            assert created["code"] == "PKA-FUE-001"
+            assert created["image_status"] is None
+            assert created["image_url"] is None
+            assert created["thumbnail_url"] is None
+            assert created["available_to_players"] is False
+            assert created_response.headers["location"] == created["status_url"]
+
+            replay_response = await client.post(
+                "/api/v1/content/cards",
+                data=form,
+                headers=create_headers,
+            )
+            assert replay_response.status_code == 201
+            assert replay_response.json()["id"] == created["id"]
+            assert storage.saves == 0
+
+            status_response = await client.get(created["status_url"], headers=headers)
+            assert status_response.status_code == 200
+            assert status_response.json()["image_status"] is None
+            assert status_response.json()["attempts"] == 0
+
+            invalid_cost_response = await client.post(
+                "/api/v1/content/cards",
+                data={**form, "cost": "11"},
+                headers={**headers, "Idempotency-Key": "stage9-invalid-cost"},
+            )
+            assert invalid_cost_response.status_code == 400
+
+            invalid_image_response = await client.post(
+                "/api/v1/content/cards",
+                data=form,
+                files={"image": ("broken.png", b"not-an-image", "image/png")},
+                headers={**headers, "Idempotency-Key": "stage9-invalid-image"},
+            )
+            assert invalid_image_response.status_code == 400
+
+            legacy_field_response = await client.post(
+                "/api/v1/content/cards",
+                data={**form, "code": "PKA-FUE-002"},
+                headers={**headers, "Idempotency-Key": "stage9-legacy-field"},
+            )
+            assert legacy_field_response.status_code == 422
+    finally:
+        app.dependency_overrides.pop(get_create_card_use_case, None)
+        app.dependency_overrides.pop(get_list_card_abilities_use_case, None)
+        app.dependency_overrides.pop(get_card_image_status_use_case, None)
+        if previous_identity is None:
+            delattr(app.state, "identity_module_contract")
+        else:
+            app.state.identity_module_contract = previous_identity
+        if previous_identity_service is None:
+            delattr(app.state, "identity_application_service")
+        else:
+            app.state.identity_application_service = previous_identity_service
+
+    assert storage.saves == 0
+    async with engine.connect() as connection:
+        assert await connection.scalar(text("SELECT count(*) FROM catalog_cards")) == 1
+        assert await connection.scalar(text("SELECT count(*) FROM catalog_card_images")) == 0
+        assert await connection.scalar(text("SELECT count(*) FROM shared_outbox")) == 1
+        assert (
+            await connection.scalar(
+                text("SELECT last_value FROM catalog_card_code_counters WHERE card_type = 'FUE'")
+            )
+            == 1
+        )

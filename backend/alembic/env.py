@@ -13,6 +13,10 @@ from src.modules.content.infrastructure.models import (  # noqa: F401
     CardModel,
     LocationModel,
 )
+from src.modules.identity.infrastructure.models import (  # noqa: F401
+    IdentitySessionModel,
+    IdentityUserModel,
+)
 from src.shared.infrastructure.config import get_settings
 from src.shared.infrastructure.database import Base
 from src.shared.infrastructure.models import IdempotencyRecordModel, OutboxModel  # noqa: F401

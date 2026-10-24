@@ -80,7 +80,8 @@ class CardImageModel(Base):
         CheckConstraint("byte_size <= 5000000", name="ck_catalog_card_images_byte_size_limit"),
         CheckConstraint("width > 0 AND height > 0", name="ck_catalog_card_images_dimensions"),
         CheckConstraint(
-            "width >= 600 AND height >= 840 AND width * 7 = height * 5",
+            "width >= 300 AND height >= 420 "
+            "AND width * 28 >= height * 19 AND width * 28 <= height * 21",
             name="ck_catalog_card_images_aspect",
         ),
         CheckConstraint(
@@ -167,15 +168,15 @@ class CardModel(Base):
     ability_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("catalog_abilities.id", ondelete="RESTRICT"), nullable=False
     )
-    image_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("catalog_card_images.id", ondelete="RESTRICT"), nullable=False
+    image_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("catalog_card_images.id", ondelete="RESTRICT"), nullable=True
     )
     version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     ability: Mapped[AbilityModel] = relationship(foreign_keys=[ability_id])
-    image: Mapped[CardImageModel] = relationship(back_populates="card")
+    image: Mapped[CardImageModel | None] = relationship(back_populates="card")
 
 
 class LocationModel(Base):

@@ -1,12 +1,13 @@
 openapi: 3.0.3
 info:
   title: Poké-Arena Content API — Crear Carta
-  version: 1.0.0
+  version: 1.3.0
   description: >-
-    Contrato de la historia Crear Carta (F-02, US 2.1.1). La carta se registra
-    para administración con estado de imagen PENDING. Solo queda disponible
-    para jugadores cuando el original y la miniatura están almacenados y el
-    estado cambia a READY. Cada tipo admite códigos 001–999 (5.994 en total);
+    Contrato de Crear Carta para el alcance del sprint actual. La creación de
+    ficha admite una imagen opcional; las cartas sin imagen quedan como
+    borradores no disponibles. Cuando una imagen se procese, solo
+    queda disponible al almacenar original y miniatura y llegar a READY. Cada
+    tipo admite códigos 001–999 (5.994 en total);
     esta capacidad no alcanza el objetivo de 10.000 cartas indicado en el
     diseño y requiere una decisión del Product Owner antes de afirmar ese
     volumen.
@@ -17,6 +18,36 @@ tags:
   - name: Content Cards
     description: Creación administrativa de cartas y seguimiento de sus imágenes
 paths:
+  /content/abilities:
+    get:
+      tags:
+        - Content Cards
+      operationId: listCardAbilities
+      summary: Listar habilidades disponibles para asignar a una carta
+      description: >-
+        Retorna definiciones existentes desde el catálogo relacional. Es una
+        consulta administrativa necesaria para seleccionar `ability_code` en
+        Crear Carta; no crea ni modifica habilidades.
+      security:
+        - PlatformBearerAuth: []
+      responses:
+        '200':
+          description: Habilidades ordenadas por código.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AbilitySummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /content/cards:
     post:
       tags:
@@ -24,13 +55,15 @@ paths:
       operationId: createCard
       summary: Crear una carta
       description: >-
-        Crea una carta y encola el procesamiento durable de su miniatura. El
-        código lo asigna el servidor y la habilidad se selecciona por el código
+        Crea una carta administrativa; la imagen es opcional. Sin imagen,
+        image_status y URLs de imagen son
+        null y la carta no está disponible para jugadores. El código lo asigna
+        el servidor y la habilidad se selecciona por el código
         de una definición existente. Los campos legacy `code`, `ability_type`,
         `ability_description` y `ability_params_json` no forman parte de este
         contrato y deben rechazarse con 422 para identificar clientes
         desactualizados. La respuesta idempotente conserva el snapshot inicial
-        201/PENDING; use el enlace de estado para consultar el estado actual.
+        201; use el enlace de estado para consultar la carta.
       security:
         - PlatformBearerAuth: []
       parameters:
@@ -46,7 +79,7 @@ paths:
                 contentType: image/png, image/jpeg, image/webp
       responses:
         '201':
-          description: Carta registrada; el procesamiento de la miniatura está pendiente.
+          description: Carta registrada como borrador; puede no tener imagen en el alcance actual.
           headers:
             Location:
               description: URI relativa para consultar el estado actual de las imágenes.
@@ -74,7 +107,7 @@ paths:
                   effect: null
                   affected_card_type: null
                   parameters: {}
-                image_status: PENDING
+                image_status: null
                 image_url: null
                 thumbnail_url: null
                 available_to_players: false
@@ -181,7 +214,6 @@ components:
         - card_type
         - rarity
         - ability_code
-        - image
       properties:
         name:
           type: string
@@ -211,8 +243,10 @@ components:
           type: string
           format: binary
           description: >-
-            Un único archivo PNG, JPG/JPEG o WebP. Máximo 5.000.000 bytes,
-            proporción exacta 5:7 y resolución mínima 600 × 840 píxeles.
+            Opcional. Si se envía, debe ser PNG, JPG/JPEG o WebP, máximo
+            5.000.000 bytes, resolución mínima 300 × 420 y proporción 5:7 con
+            tolerancia del 5%. La miniatura se recorta al centro a 200 × 280,
+            sin modificar el original almacenado.
 
     CardType:
       type: string
@@ -321,7 +355,8 @@ components:
         image_status:
           allOf:
             - $ref: '#/components/schemas/ImageStatus'
-          description: Siempre PENDING en la respuesta inicial de creación.
+          nullable: true
+          description: null mientras la imagen no forme parte de la carta.
         image_url:
           type: string
           format: uri-reference
@@ -383,6 +418,7 @@ components:
           $ref: '#/components/schemas/AbilitySummary'
         image_status:
           $ref: '#/components/schemas/ImageStatus'
+          nullable: true
         image_url:
           type: string
           format: uri-reference

@@ -9,11 +9,18 @@ from sqlalchemy import text
 
 from src.modules.content.infrastructure.workers import run_content_workers
 from src.modules.content.presentation.routers import content_router
+from src.modules.identity.composition import (
+    build_identity_application_service,
+    register_identity_module,
+)
+from src.modules.identity.presentation.routers import (
+    identity_router,
+    local_test_identity_router,
+)
 from src.shared.domain.correlation import get_current_correlation_id
 from src.shared.infrastructure.config import get_settings
 from src.shared.infrastructure.database import (
     AsyncWriteSessionLocal,
-    Base,
     read_engine,
     write_engine,
 )
@@ -30,17 +37,8 @@ setup_logging("DEBUG" if settings.DEBUG else "INFO")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Ciclo de vida de la aplicación: inicialización y apagado limpio."""
-    # 1. Startup: Crear tablas en PostgreSQL (Master y Réplica en local) si no existen
-    async with write_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    try:
-        async with read_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception:
-        pass
-
-    # 2. Inicializar índices en MongoDB
+    """Inicializa adaptadores y cierra conexiones; Alembic corre en el despliegue."""
+    # PostgreSQL must already be migrated before API instances or workers start.
     mongo_db = get_mongo_db()
     await mongo_db["cards_projection"].create_index([("name", "text")])
     await mongo_db["cards_projection"].create_index([("card_type", 1)])
@@ -54,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # 3. Shutdown: Cerrar conexiones
+    # Shutdown: close connections.
     content_workers.cancel()
     try:
         await content_workers
@@ -74,6 +72,8 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+identity_service = build_identity_application_service(settings=settings)
+register_identity_module(app, identity_service)
 
 # ------------------------------------------------------------------------------
 # Middlewares
@@ -98,6 +98,9 @@ register_exception_handlers(app)
 # Registro de Routers Modulares
 # ------------------------------------------------------------------------------
 app.include_router(content_router, prefix=settings.API_V1_PREFIX)
+app.include_router(identity_router, prefix=settings.API_V1_PREFIX)
+if settings.ENVIRONMENT.lower() in {"development", "test"}:
+    app.include_router(local_test_identity_router, prefix=settings.API_V1_PREFIX)
 
 
 # ------------------------------------------------------------------------------

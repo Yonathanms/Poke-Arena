@@ -38,8 +38,14 @@ class SqlAbilityRepository(IAbilityRepository):
             select(AbilityModel).where(AbilityModel.code == code.value)
         )
         model = result.scalar_one_or_none()
-        if model is None:
-            return None
+        return self._to_dto(model) if model is not None else None
+
+    async def list_all(self) -> list[AbilityDefinitionDTO]:
+        result = await self.session.execute(select(AbilityModel).order_by(AbilityModel.code))
+        return [self._to_dto(model) for model in result.scalars().all()]
+
+    @staticmethod
+    def _to_dto(model: AbilityModel) -> AbilityDefinitionDTO:
         spec = (
             AbilitySpec(
                 ability_type=AbilityType(model.ability_type),

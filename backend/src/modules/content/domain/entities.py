@@ -32,11 +32,11 @@ class Card(Entity):
     power: int = 0
     card_type: CardType = CardType.FUEGO
     rarity: CardRarity = CardRarity.COMUN
-    image_url: str = ""
+    image_url: str | None = None
     thumbnail_url: str | None = None
     ability: AbilitySpec | None = None
     ability_code: AbilityCode | None = None
-    image_state: CardImageState = CardImageState.PENDING
+    image_state: CardImageState | None = None
     image_metadata: CardImageMetadata | None = None
     thumbnail_metadata: CardThumbnailMetadata | None = None
     version: int = 1
@@ -70,11 +70,11 @@ class Card(Entity):
         power: int,
         card_type: CardType,
         rarity: CardRarity,
-        image_url: str,
+        image_url: str | None = None,
         thumbnail_url: str | None = None,
         ability: AbilitySpec | None = None,
         ability_code: AbilityCode | None = None,
-        image_state: CardImageState = CardImageState.PENDING,
+        image_state: CardImageState | None = None,
         image_metadata: CardImageMetadata | None = None,
         thumbnail_metadata: CardThumbnailMetadata | None = None,
         card_id: str | None = None,
@@ -98,7 +98,13 @@ class Card(Entity):
             thumbnail_url=thumbnail_url,
             ability=ability,
             ability_code=ability_code,
-            image_state=image_state,
+            image_state=(
+                image_state
+                if image_state is not None
+                else CardImageState.PENDING
+                if image_url is not None
+                else None
+            ),
             image_metadata=image_metadata,
             thumbnail_metadata=thumbnail_metadata,
             version=version,
@@ -112,7 +118,7 @@ class Card(Entity):
         """La disponibilidad depende del estado y de referencias/metadatos válidos."""
         return (
             self.image_state is CardImageState.READY
-            and bool(self.image_url.strip())
+            and bool(self.image_url and self.image_url.strip())
             and bool(self.thumbnail_url and self.thumbnail_url.strip())
             and self.image_metadata is not None
             and self.thumbnail_metadata is not None

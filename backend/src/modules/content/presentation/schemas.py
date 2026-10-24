@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from src.modules.content.domain.value_objects import (
     AbilityType,
+    CardImageState,
     CardRarity,
     CardType,
     LocationEffectType,
@@ -14,6 +15,15 @@ class AbilitySchema(BaseModel):
     ability_type: AbilityType
     description: str
     params: dict[str, Any] = Field(default_factory=dict)
+
+
+class CardAbilitySummaryResponse(BaseModel):
+    code: str
+    name: str
+    trigger: str | None
+    effect: str | None
+    affected_card_type: CardType | None
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class LocationEffectSchema(BaseModel):
@@ -30,18 +40,12 @@ class CardResponse(BaseModel):
     power: int
     card_type: CardType
     rarity: CardRarity
-    image_url: str
+    image_url: str | None
     thumbnail_url: str | None = None
-    ability: AbilitySchema | None = None
-
-
-class CardAbilitySummaryResponse(BaseModel):
-    code: str
-    name: str
-    trigger: str | None
-    effect: str | None
-    affected_card_type: CardType | None
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    ability: CardAbilitySummaryResponse | AbilitySchema | None = None
+    image_status: CardImageState | None = None
+    available_to_players: bool | None = None
+    status_url: str | None = None
 
 
 class CardCreatedResponse(BaseModel):
@@ -53,11 +57,29 @@ class CardCreatedResponse(BaseModel):
     card_type: CardType
     rarity: CardRarity
     ability: CardAbilitySummaryResponse
-    image_status: str
+    image_status: CardImageState | None
     image_url: str | None
     thumbnail_url: str | None
     available_to_players: bool
     status_url: str
+
+
+class CardImageStatusResponse(BaseModel):
+    id: str
+    code: str
+    name: str
+    cost: int
+    power: int
+    card_type: CardType
+    rarity: CardRarity
+    ability: CardAbilitySummaryResponse
+    image_status: CardImageState | None
+    image_url: str | None
+    thumbnail_url: str | None
+    available_to_players: bool
+    status_url: str
+    attempts: int = Field(ge=0)
+    last_error: str | None
 
 
 class SearchCardsResponse(BaseModel):

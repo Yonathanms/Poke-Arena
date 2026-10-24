@@ -2,11 +2,13 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from src.modules.content.application.dtos import (
+    AbilityCatalogEntryDTO,
     AbilityDefinitionDTO,
     CardCreatedEventDTO,
     CardImageClaimDTO,
     CardImageRecordDTO,
     CardImageStatusDTO,
+    ContentAuthenticatedPrincipalDTO,
     IdempotencyRecordDTO,
     OutboxClaimDTO,
 )
@@ -42,7 +44,17 @@ class IAbilityRepository(Protocol):
 
     async def get_by_code(self, code: AbilityCode) -> AbilityDefinitionDTO | None: ...
 
+    async def list_all(self) -> list[AbilityDefinitionDTO]: ...
+
     async def ensure_none_ability(self) -> None: ...
+
+
+class IContentAuthorizationPort(Protocol):
+    async def authenticate(self, access_token: str) -> ContentAuthenticatedPrincipalDTO: ...
+
+
+class IAbilityCatalogPort(Protocol):
+    async def list_all(self) -> list[AbilityCatalogEntryDTO]: ...
 
 
 class ICardImageRepository(Protocol):

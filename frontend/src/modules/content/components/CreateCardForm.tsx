@@ -1,59 +1,129 @@
-import React, { useState } from "react";
-import { PlusCircle, AlertCircle, CheckCircle2, Sparkles, Image as ImageIcon } from "lucide-react";
-import { ApiClientError } from "@/shared/api/client";
-import { AbilityType, CardRarity, CardType } from "../types/content";
+import React, { useEffect, useRef, useState } from "react";
+import { PlusCircle, AlertCircle, CheckCircle2, Sparkles } from "lucide-react";
+import { ApiClientError, apiFetch } from "@/shared/api/client";
+import {
+  AbilitySummaryDTO,
+  CardCreatedResponseDTO,
+  CardImageStatusResponseDTO,
+  CardRarity,
+  CardType,
+} from "../types/content";
 
 interface CreateCardFormProps {
   onSuccess: () => void;
 }
 
+const NONE_ABILITY: AbilitySummaryDTO = {
+  code: "HAB-000",
+  name: "Sin Habilidad",
+  trigger: null,
+  effect: null,
+  affected_card_type: null,
+  parameters: {},
+};
+const MAX_IMAGE_BYTES = 5_000_000;
+
 export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => {
-  const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [cost, setCost] = useState(2);
   const [power, setPower] = useState(3);
   const [cardType, setCardType] = useState<CardType>("FUE");
   const [rarity, setRarity] = useState<CardRarity>("COMUN");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [aspectWarning, setAspectWarning] = useState<string | null>(null);
 
-  // Habilidad opcional
-  const [abilityType, setAbilityType] = useState<AbilityType>("HAB-000");
-  const [abilityDesc, setAbilityDesc] = useState("");
+  const [abilities, setAbilities] = useState<AbilitySummaryDTO[]>([]);
+  const [abilityCode, setAbilityCode] = useState("");
+  const [abilityCatalogError, setAbilityCatalogError] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [createdCard, setCreatedCard] = useState<CardCreatedResponseDTO | null>(null);
+  const [imageStatus, setImageStatus] = useState<CardImageStatusResponseDTO | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const idempotencyKey = useRef<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const changedRequestField = (): void => {
+    idempotencyKey.current = null;
+  };
 
-    setImageFile(file);
-    const objectUrl = URL.createObjectURL(file);
-    setImagePreview(objectUrl);
-
-    // Pre-validar proporción 5:7 (~0.714) en el cliente
-    const img = new Image();
-    img.src = objectUrl;
-    img.onload = () => {
-      const ratio = img.width / img.height;
-      const target = 5 / 7;
-      if (Math.abs(ratio - target) > 0.05) {
-        setAspectWarning(
-          `Advertencia: La imagen tiene proporción ${(ratio).toFixed(2)} (${img.width}x${img.height}). La proporción requerida es 5:7 (~0.71).`
+  useEffect(() => {
+    let active = true;
+    apiFetch<AbilitySummaryDTO[]>("/content/abilities")
+      .then((items) => {
+        if (!active) return;
+        const availableAbilities = items.length > 0 ? items : [NONE_ABILITY];
+        setAbilities(availableAbilities);
+        setAbilityCode((current) => current || availableAbilities[0].code);
+        setAbilityCatalogError(items.length > 0
+          ? null
+          : "El catálogo está vacío; se puede continuar con HAB-000 — Sin Habilidad.");
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setAbilities([NONE_ABILITY]);
+        setAbilityCode((current) => current || NONE_ABILITY.code);
+        setAbilityCatalogError(
+          err instanceof Error
+            ? `No se pudo cargar el catálogo completo (${err.message}). Se puede continuar con HAB-000 — Sin Habilidad.`
+            : "No se pudo cargar el catálogo completo. Se puede continuar con HAB-000 — Sin Habilidad."
         );
-      } else {
-        setAspectWarning(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !createdCard?.image_status ||
+      !createdCard.status_url ||
+      imageStatus?.image_status === "READY" ||
+      imageStatus?.image_status === "FAILED"
+    ) {
+      return;
+    }
+    let active = true;
+    let timeout: ReturnType<typeof setTimeout>;
+    const statusEndpoint = createdCard.status_url.replace(/^\/api\/v1/, "");
+
+    const poll = async (): Promise<void> => {
+      try {
+        const current = await apiFetch<CardImageStatusResponseDTO>(statusEndpoint);
+        if (!active) return;
+        setImageStatus(current);
+        setStatusError(null);
+        if (current.image_status !== "READY" && current.image_status !== "FAILED") {
+          timeout = setTimeout(() => void poll(), 2000);
+        }
+      } catch (err: unknown) {
+        if (!active) return;
+        setStatusError(err instanceof Error ? err.message : "No se pudo consultar el estado.");
+        if (err instanceof ApiClientError && [401, 403].includes(err.status)) return;
+        timeout = setTimeout(() => void poll(), 5000);
       }
     };
-  };
+
+    timeout = setTimeout(() => void poll(), 1000);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [createdCard, imageStatus?.image_status]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imageFile) {
-      setErrorMessage("Por favor selecciona una imagen para la carta.");
+    if (!abilityCode) {
+      setErrorMessage("Selecciona una habilidad para la carta.");
+      return;
+    }
+    if (imageFile && imageFile.size > MAX_IMAGE_BYTES) {
+      setErrorMessage("La imagen no puede superar los 5 MB.");
+      return;
+    }
+    if (imageFile && !["image/jpeg", "image/png", "image/webp"].includes(imageFile.type)) {
+      setErrorMessage("Formato no admitido. Usa JPG, PNG o WebP.");
       return;
     }
 
@@ -63,46 +133,32 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
 
     try {
       const formData = new FormData();
-      formData.append("code", code.trim().toUpperCase());
       formData.append("name", name.trim());
       formData.append("cost", cost.toString());
       formData.append("power", power.toString());
       formData.append("card_type", cardType);
       formData.append("rarity", rarity);
-      formData.append("image", imageFile);
+      formData.append("ability_code", abilityCode);
+      if (imageFile) formData.append("image", imageFile);
 
-      if (abilityType !== "HAB-000") {
-        formData.append("ability_type", abilityType);
-        formData.append("ability_description", abilityDesc);
-      }
-
-      const idempotencyKey = `card-${crypto.randomUUID()}`;
-
-      const response = await fetch("/api/v1/content/cards", {
+      idempotencyKey.current ??= `card-${crypto.randomUUID()}`;
+      const created = await apiFetch<CardCreatedResponseDTO>("/content/cards", {
         method: "POST",
-        headers: {
-          "Idempotency-Key": idempotencyKey,
-        },
         body: formData,
-      });
+      }, idempotencyKey.current);
 
-      const json = await response.json();
-
-      if (!response.ok) {
-        if (json.error) {
-          throw new ApiClientError(response.status, json.error);
-        }
-        throw new Error(json.message || "Error al crear carta");
-      }
-
-      setSuccessMessage(`¡Carta '${name}' creada exitosamente y sincronizada en PostgreSQL y MongoDB!`);
-      // Reset form
-      setCode("");
+      setCreatedCard(created);
+      setImageStatus(null);
+      setStatusError(null);
+      setSuccessMessage(created.image_status
+        ? `La carta ${created.code} se registró. Su imagen está en procesamiento.`
+        : `La carta ${created.code} quedó registrada como borrador sin imagen.`);
+      idempotencyKey.current = null;
       setName("");
+      setCost(2);
+      setPower(3);
       setImageFile(null);
-      setImagePreview(null);
-      setAspectWarning(null);
-      onSuccess();
+      if (imageInputRef.current) imageInputRef.current.value = "";
     } catch (err: unknown) {
       if (err instanceof ApiClientError) {
         setErrorMessage(`[${err.code}]: ${err.message}`);
@@ -147,23 +203,48 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
         </div>
       )}
 
+      {abilityCatalogError && (
+        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          {abilityCatalogError}
+        </div>
+      )}
+
+      {createdCard && (
+        <section className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm" aria-live="polite">
+          <h3 className="font-semibold text-slate-100">Estado de {createdCard.code}</h3>
+          <p className="mt-1 text-slate-300">
+            {statusError
+              ? `No se pudo consultar el estado: ${statusError}`
+              : createdCard.image_status
+                ? `Imagen: ${imageStatus?.image_status ?? createdCard.image_status}`
+              : "Sin imagen. La carta permanece como borrador y no está disponible para jugar."}
+          </p>
+          {!createdCard.image_status && (
+            <button type="button" onClick={onSuccess} className="mt-2 text-blue-300 underline">
+              Volver al catálogo
+            </button>
+          )}
+          {imageStatus?.image_status === "FAILED" && (
+            <p className="mt-1 text-amber-300">
+              El procesamiento agotó sus intentos. La carta sigue sin estar disponible.
+              {imageStatus.last_error ? ` ${imageStatus.last_error}` : ""}
+            </p>
+          )}
+          {imageStatus?.image_status === "READY" && (
+            <>
+              <p className="mt-1 text-emerald-300">
+                Las imágenes están listas y la carta ya está disponible.
+              </p>
+              <button type="button" onClick={onSuccess} className="mt-2 text-blue-300 underline">
+                Volver al catálogo
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {/* Código */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Código Oficial (ej: PKA-FUE-001) *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="PKA-FUE-001"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-arena-surface border border-arena-border rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
           {/* Nombre */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
@@ -172,33 +253,40 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
             <input
               type="text"
               required
+              maxLength={100}
               placeholder="Charmander"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                changedRequestField();
+                setName(e.target.value);
+              }}
               className="w-full px-3.5 py-2.5 bg-arena-surface border border-arena-border rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
             />
           </div>
 
-          {/* Costo (1..6) */}
+          {/* Costo (0..10) */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Costo de Energía ({cost} Puntos) *
+              Costo de Energía ({cost}) *
             </label>
             <input
               type="range"
-              min={1}
-              max={6}
+              min={0}
+              max={10}
               value={cost}
-              onChange={(e) => setCost(Number(e.target.value))}
+              onChange={(e) => {
+                changedRequestField();
+                setCost(Number(e.target.value));
+              }}
               className="w-full accent-blue-500 cursor-pointer"
             />
             <div className="flex justify-between text-[11px] text-slate-400 mt-1">
-              <span>1</span>
+              <span>0</span>
               <span>2</span>
-              <span>3</span>
               <span>4</span>
-              <span>5</span>
-              <span>6 (Máx)</span>
+              <span>6</span>
+              <span>8</span>
+              <span>10 (Máx)</span>
             </div>
           </div>
 
@@ -209,10 +297,14 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
             </label>
             <input
               type="number"
-              min={0}
+              min={-20}
+              max={20}
               required
               value={power}
-              onChange={(e) => setPower(Number(e.target.value))}
+              onChange={(e) => {
+                changedRequestField();
+                setPower(Number(e.target.value));
+              }}
               className="w-full px-3.5 py-2.5 bg-arena-surface border border-arena-border rounded-xl text-sm text-slate-100 focus:outline-none focus:border-blue-500"
             />
           </div>
@@ -224,7 +316,10 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
             </label>
             <select
               value={cardType}
-              onChange={(e) => setCardType(e.target.value as CardType)}
+              onChange={(e) => {
+                changedRequestField();
+                setCardType(e.target.value as CardType);
+              }}
               className="w-full px-3.5 py-2.5 bg-arena-surface border border-arena-border rounded-xl text-sm text-slate-100 focus:outline-none focus:border-blue-500"
             >
               <option value="FUE">Fuego (FUE)</option>
@@ -233,7 +328,6 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
               <option value="ELE">Eléctrico (ELE)</option>
               <option value="PSI">Psíquico (PSI)</option>
               <option value="LUC">Lucha (LUC)</option>
-              <option value="INC">Incoloro (INC)</option>
             </select>
           </div>
 
@@ -244,91 +338,75 @@ export const CreateCardForm: React.FC<CreateCardFormProps> = ({ onSuccess }) => 
             </label>
             <select
               value={rarity}
-              onChange={(e) => setRarity(e.target.value as CardRarity)}
+              onChange={(e) => {
+                changedRequestField();
+                setRarity(e.target.value as CardRarity);
+              }}
               className="w-full px-3.5 py-2.5 bg-arena-surface border border-arena-border rounded-xl text-sm text-slate-100 focus:outline-none focus:border-blue-500"
             >
               <option value="COMUN">Común</option>
               <option value="POCO_COMUN">Poco Común</option>
               <option value="RARA">Rara</option>
-              <option value="EPICA">Épica</option>
               <option value="LEGENDARIA">Legendaria</option>
             </select>
           </div>
         </div>
 
-        {/* Imagen de Carta (5:7) */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-            Imagen de la Carta (Proporción Obligatoria 5:7) *
+        <div className="rounded-xl border border-arena-border bg-arena-surface/50 p-4 space-y-2">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+            Imagen de carta (opcional)
           </label>
-          <div className="flex flex-col sm:flex-row gap-4 items-center p-4 border-2 border-dashed border-arena-border rounded-xl bg-arena-surface/40 hover:bg-arena-surface/70 transition-colors">
-            {imagePreview ? (
-              <div className="w-24 aspect-[5/7] rounded-lg overflow-hidden border border-arena-border shrink-0 bg-black">
-                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-              </div>
-            ) : (
-              <div className="w-24 aspect-[5/7] rounded-lg border border-arena-border/50 bg-arena-card flex flex-col items-center justify-center text-slate-500 shrink-0">
-                <ImageIcon className="w-6 h-6 mb-1" />
-                <span className="text-[10px]">5:7</span>
-              </div>
-            )}
-
-            <div className="flex-1 w-full text-center sm:text-left">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
-              />
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                Formatos permitidos: JPG, PNG, WEBP. Se procesará automáticamente a WebP y miniatura con Pillow.
-              </p>
-              {aspectWarning && (
-                <p className="text-[11px] text-amber-400 mt-1 font-medium flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  {aspectWarning}
-                </p>
-              )}
-            </div>
-          </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => {
+              changedRequestField();
+              setImageFile(event.currentTarget.files?.[0] ?? null);
+            }}
+            className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-200 hover:file:bg-blue-600/30"
+          />
+          <p className="text-xs text-slate-400">
+            JPG, PNG o WebP; hasta 5 MB; mínimo 300 × 420 px y proporción aproximada 5:7.
+            {imageFile ? ` Seleccionada: ${imageFile.name}` : " Si se omite, la carta se guarda como borrador."}
+          </p>
         </div>
 
-        {/* Habilidad Opcional */}
+        {/* Habilidad obligatoria del catálogo */}
         <div className="p-4 rounded-xl bg-arena-surface/50 border border-arena-border space-y-3">
           <label className="block text-xs font-semibold uppercase tracking-wider text-blue-400">
-            ✦ Habilidad Especial (Opcional)
+            ✦ Habilidad (obligatoria)
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <select
-                value={abilityType}
-                onChange={(e) => setAbilityType(e.target.value as AbilityType)}
-                className="w-full px-3 py-2 bg-arena-surface border border-arena-border rounded-xl text-xs text-slate-100"
-              >
-                <option value="HAB-000">Sin habilidad (HAB-000)</option>
-                <option value="AL_REVELARSE">Al Revelarse</option>
-                <option value="EFECTO_CONTINUO">Efecto Continuo</option>
-                <option value="EVOLUCION">Evolución</option>
-              </select>
-            </div>
-            {abilityType !== "HAB-000" && (
-              <div>
-                <input
-                  type="text"
-                  placeholder="Descripción de la habilidad..."
-                  value={abilityDesc}
-                  onChange={(e) => setAbilityDesc(e.target.value)}
-                  className="w-full px-3 py-2 bg-arena-surface border border-arena-border rounded-xl text-xs text-slate-100"
-                />
-              </div>
-            )}
-          </div>
+          <select
+            required
+            value={abilityCode}
+            onChange={(e) => {
+              changedRequestField();
+              setAbilityCode(e.target.value);
+            }}
+            disabled={abilities.length === 0}
+            className="w-full px-3 py-2 bg-arena-surface border border-arena-border rounded-xl text-xs text-slate-100 disabled:opacity-50"
+          >
+            <option value="" disabled>
+              {abilities.length === 0 ? "Cargando habilidades…" : "Selecciona una habilidad"}
+            </option>
+            {abilities.map((ability) => (
+              <option key={ability.code} value={ability.code}>
+                {ability.code} — {ability.name}
+              </option>
+            ))}
+          </select>
+          {abilities.find((ability) => ability.code === abilityCode)?.effect && (
+            <p className="text-xs text-slate-300">
+              {abilities.find((ability) => ability.code === abilityCode)?.effect}
+            </p>
+          )}
         </div>
 
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !abilityCode || Boolean(createdCard?.image_status && imageStatus?.image_status !== "READY" && imageStatus?.image_status !== "FAILED")}
           className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (

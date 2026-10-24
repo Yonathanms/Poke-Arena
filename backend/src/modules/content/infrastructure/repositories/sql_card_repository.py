@@ -9,7 +9,6 @@ from src.modules.content.domain.entities import Card
 from src.modules.content.domain.exceptions import (
     AbilityNotFoundError,
     AbilityRequiredError,
-    CardImageRecordRequiredError,
 )
 from src.modules.content.domain.value_objects import (
     AbilityCode,
@@ -32,8 +31,6 @@ class SqlCardRepository(ICardRepository):
         self.session = session
 
     async def save(self, card: Card, image_record_id: str | None = None) -> None:
-        if image_record_id is None:
-            raise CardImageRecordRequiredError()
         if card.ability_code is None:
             raise AbilityRequiredError()
         ability_result = await self.session.execute(
@@ -43,7 +40,7 @@ class SqlCardRepository(ICardRepository):
         if ability is None:
             raise AbilityNotFoundError(card.ability_code.value)
 
-        # La FK de image_id valida también las inserciones concurrentes y datos internos.
+        # La FK valida la imagen cuando fue incluida; en el sprint puede quedar pendiente.
         model = CardModel(
             id=card.id,
             code=card.code,
@@ -81,14 +78,16 @@ class SqlCardRepository(ICardRepository):
     @staticmethod
     def _to_entity(model: CardModel) -> Card:
         image = model.image
-        original_metadata = CardImageMetadata(
-            image_format=CardImageFormat(image.image_format),
-            byte_size=image.byte_size,
-            width=image.width,
-            height=image.height,
-        )
+        original_metadata = None
         thumbnail_metadata = None
-        if image.thumbnail_format is not None:
+        if image is not None:
+            original_metadata = CardImageMetadata(
+                image_format=CardImageFormat(image.image_format),
+                byte_size=image.byte_size,
+                width=image.width,
+                height=image.height,
+            )
+        if image is not None and image.thumbnail_format is not None:
             if (
                 image.thumbnail_byte_size is None
                 or image.thumbnail_width is None
@@ -118,11 +117,11 @@ class SqlCardRepository(ICardRepository):
             power=model.power,
             card_type=CardType(model.card_type),
             rarity=CardRarity(model.rarity),
-            image_url=image.original_storage_key,
-            thumbnail_url=image.thumbnail_storage_key,
+            image_url=image.original_storage_key if image is not None else None,
+            thumbnail_url=image.thumbnail_storage_key if image is not None else None,
             ability=ability_spec,
             ability_code=AbilityCode(model.ability.code),
-            image_state=CardImageState(image.state),
+            image_state=CardImageState(image.state) if image is not None else None,
             image_metadata=original_metadata,
             thumbnail_metadata=thumbnail_metadata,
             card_id=model.id,

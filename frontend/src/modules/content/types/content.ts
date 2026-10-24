@@ -1,6 +1,13 @@
-export type CardType = "FUE" | "AGU" | "PLA" | "ELE" | "PSI" | "LUC" | "INC";
+export type CardType = "FUE" | "AGU" | "PLA" | "ELE" | "PSI" | "LUC";
 
-export type CardRarity = "COMUN" | "POCO_COMUN" | "RARA" | "EPICA" | "LEGENDARIA";
+export type CardRarity = "COMUN" | "POCO_COMUN" | "RARA" | "LEGENDARIA";
+
+export type CardImageStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "RETRY_PENDING"
+  | "READY"
+  | "FAILED";
 
 export type AbilityType = "HAB-000" | "AL_REVELARSE" | "EFECTO_CONTINUO" | "EVOLUCION";
 
@@ -14,6 +21,38 @@ export interface AbilityDTO {
   ability_type: AbilityType;
   description: string;
   params: Record<string, unknown>;
+}
+
+export interface AbilitySummaryDTO {
+  code: string;
+  name: string;
+  trigger: string | null;
+  effect: string | null;
+  affected_card_type: CardType | null;
+  parameters: Record<string, unknown>;
+}
+
+export interface CardCreatedResponseDTO {
+  id: string;
+  code: string;
+  name: string;
+  cost: number;
+  power: number;
+  card_type: CardType;
+  rarity: CardRarity;
+  ability: AbilitySummaryDTO;
+  image_status: CardImageStatus | null;
+  image_url: string | null;
+  thumbnail_url: string | null;
+  available_to_players: false;
+  status_url: string;
+}
+
+export interface CardImageStatusResponseDTO extends Omit<CardCreatedResponseDTO, "image_status" | "available_to_players"> {
+  image_status: CardImageStatus;
+  available_to_players: boolean;
+  attempts: number;
+  last_error: string | null;
 }
 
 export interface LocationEffectDTO {
@@ -30,9 +69,12 @@ export interface CardDTO {
   power: number;
   card_type: CardType;
   rarity: CardRarity;
-  image_url: string;
+  image_url: string | null;
   thumbnail_url?: string | null;
-  ability?: AbilityDTO | null;
+  ability?: AbilityDTO | AbilitySummaryDTO | null;
+  image_status?: CardImageStatus | null;
+  available_to_players?: boolean;
+  status_url?: string;
 }
 
 export interface LocationDTO {

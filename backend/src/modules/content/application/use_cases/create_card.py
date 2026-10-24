@@ -61,7 +61,7 @@ class CreateCardCommand:
     card_type: CardType
     rarity: CardRarity
     ability_code: AbilityCode
-    image_bytes: bytes
+    image_bytes: bytes | None
     actor: AuthenticatedCardActor
     idempotency_key: str
     correlation_id: str | None = None
@@ -98,12 +98,18 @@ class CreateCardUseCase:
         normalized_name = Card.validate_fields(cmd.name, cmd.cost, cmd.power, cmd.ability_code)
         if not 1 <= len(cmd.idempotency_key) <= 128:
             raise InvalidIdempotencyKeyError()
-        image_metadata = self.image_inspector.inspect_card_image(cmd.image_bytes)
-        image_hash = hashlib.sha256(cmd.image_bytes).hexdigest()
+        image_metadata = (
+            self.image_inspector.inspect_card_image(cmd.image_bytes)
+            if cmd.image_bytes is not None
+            else None
+        )
+        image_hash = (
+            hashlib.sha256(cmd.image_bytes).hexdigest() if cmd.image_bytes is not None else None
+        )
         request_hash = self._request_hash(cmd, normalized_name, image_hash)
 
         correlation_id = cmd.correlation_id or str(uuid.uuid4())
-        image_id = str(uuid.uuid4())
+        image_id = str(uuid.uuid4()) if image_metadata is not None else None
         card_id = str(uuid.uuid4())
         image_url: str | None = None
         await self.idempotency.acquire_key_guard(
@@ -123,12 +129,13 @@ class CreateCardUseCase:
                     raise AbilityNotFoundError(cmd.ability_code.value)
             await self.idempotency.end_preflight_read()
 
-            extension = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[
-                image_metadata.image_format.value
-            ]
-            image_url = await self.file_storage.save_file(
-                cmd.image_bytes, extension, subfolder="cards/originals"
-            )
+            if image_metadata is not None and cmd.image_bytes is not None:
+                extension = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}[
+                    image_metadata.image_format.value
+                ]
+                image_url = await self.file_storage.save_file(
+                    cmd.image_bytes, extension, subfolder="cards/originals"
+                )
             try:
                 async with self.uow:
                     owner = await self.idempotency.reserve(
@@ -151,14 +158,19 @@ class CreateCardUseCase:
                     if ability is None:
                         raise AbilityNotFoundError(cmd.ability_code.value)
 
-                    image_record = CardImageRecordDTO(
-                        id=image_id,
-                        original_storage_key=image_url,
-                        original_sha256=image_hash,
-                        original_metadata=image_metadata,
-                        state=CardImageState.PENDING,
-                    )
-                    await self.image_repo.save(image_record)
+                    if (
+                        image_metadata is not None
+                        and image_id is not None
+                        and image_url is not None
+                    ):
+                        image_record = CardImageRecordDTO(
+                            id=image_id,
+                            original_storage_key=image_url,
+                            original_sha256=image_hash or "",
+                            original_metadata=image_metadata,
+                            state=CardImageState.PENDING,
+                        )
+                        await self.image_repo.save(image_record)
 
                     code = await self.code_allocator.allocate_next(cmd.card_type)
                     card = Card.create(
@@ -171,7 +183,9 @@ class CreateCardUseCase:
                         image_url=image_url,
                         ability=ability.ability,
                         ability_code=ability.code,
-                        image_state=CardImageState.PENDING,
+                        image_state=(
+                            CardImageState.PENDING if image_metadata is not None else None
+                        ),
                         image_metadata=image_metadata,
                         card_id=card_id,
                     )
@@ -208,11 +222,12 @@ class CreateCardUseCase:
                     if accepted.request_hash != request_hash:
                         raise IdempotencyKeyReusedError() from exc
                     return self._replay_or_conflict(accepted, request_hash)
-                try:
-                    await self.file_storage.delete_file(image_url)
-                except Exception as compensation_error:
-                    logger.error("Archivo de imagen requiere conciliación posterior")
-                    raise OriginalImageCompensationError() from compensation_error
+                if image_url is not None:
+                    try:
+                        await self.file_storage.delete_file(image_url)
+                    except Exception as compensation_error:
+                        logger.error("Archivo de imagen requiere conciliación posterior")
+                        raise OriginalImageCompensationError() from compensation_error
                 raise
         finally:
             try:
@@ -223,7 +238,7 @@ class CreateCardUseCase:
                 logger.error("No se pudo liberar el bloqueo temporal de idempotencia")
 
     @staticmethod
-    def _request_hash(cmd: CreateCardCommand, normalized_name: str, image_hash: str) -> str:
+    def _request_hash(cmd: CreateCardCommand, normalized_name: str, image_hash: str | None) -> str:
         canonical = {
             "name": normalized_name,
             "cost": cmd.cost,
@@ -266,7 +281,7 @@ class CreateCardUseCase:
             card_type=card.card_type.value,
             rarity=card.rarity.value,
             ability=ability_summary,
-            image_status=CardImageState.PENDING.value,
+            image_status=card.image_state.value if card.image_state else None,
             image_url=None,
             thumbnail_url=None,
             available_to_players=False,
@@ -293,7 +308,9 @@ class CreateCardUseCase:
             card_type=str(body["card_type"]),
             rarity=str(body["rarity"]),
             ability=ability,
-            image_status=str(body["image_status"]),
+            image_status=(
+                str(body["image_status"]) if isinstance(body["image_status"], str) else None
+            ),
             image_url=body["image_url"] if isinstance(body["image_url"], str) else None,
             thumbnail_url=(
                 body["thumbnail_url"] if isinstance(body["thumbnail_url"], str) else None

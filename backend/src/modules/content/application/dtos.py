@@ -22,6 +22,25 @@ class AbilityDefinitionDTO:
 
 
 @dataclass(frozen=True)
+class ContentAuthenticatedPrincipalDTO:
+    """Verified identity claims needed by Content authorization."""
+
+    actor_id: str
+    is_platform_admin: bool
+    is_test_identity: bool = False
+
+
+@dataclass(frozen=True)
+class AbilityCatalogEntryDTO:
+    code: str
+    name: str
+    trigger: str | None
+    effect: str | None
+    affected_card_type: str | None
+    parameters: dict[str, JsonValue]
+
+
+@dataclass(frozen=True)
 class CardImageRecordDTO:
     id: str
     original_storage_key: str
@@ -61,7 +80,7 @@ class CardImageStatusDTO:
     card_type: str
     rarity: str
     ability: dict[str, JsonValue]
-    image_status: str
+    image_status: str | None
     image_url: str | None
     thumbnail_url: str | None
     available_to_players: bool
@@ -114,7 +133,7 @@ class CardCreationSnapshot:
     card_type: str
     rarity: str
     ability: dict[str, JsonValue]
-    image_status: str
+    image_status: str | None
     image_url: str | None
     thumbnail_url: str | None
     available_to_players: bool

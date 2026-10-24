@@ -206,9 +206,7 @@ class SqlCardImageRepository(ICardImageRepository):
         self, claim: CardImageClaimDTO, sanitized_error: str
     ) -> CardCreatedEventDTO | None:
         now = func.now()
-        next_state = (
-            CardImageState.FAILED if claim.attempts >= 5 else CardImageState.RETRY_PENDING
-        )
+        next_state = CardImageState.FAILED if claim.attempts >= 5 else CardImageState.RETRY_PENDING
         delay = self.RETRY_DELAYS.get(claim.attempts)
         next_attempt = now + text(f"interval '{delay} seconds'") if delay else None
         result = await self.session.execute(
@@ -250,7 +248,7 @@ class SqlCardImageRepository(ICardImageRepository):
         ability_payload = payload["ability"]
         if not isinstance(ability_payload, dict):
             raise ValueError("La proyección de habilidad tiene un formato inválido.")
-        ready = image.state == CardImageState.READY.value
+        ready = image is not None and image.state == CardImageState.READY.value
         return CardImageStatusDTO(
             id=card_id,
             code=model.code,
@@ -260,19 +258,19 @@ class SqlCardImageRepository(ICardImageRepository):
             card_type=model.card_type,
             rarity=model.rarity,
             ability=ability_payload,
-            image_status=image.state,
-            image_url=image.original_storage_key if ready else None,
-            thumbnail_url=image.thumbnail_storage_key if ready else None,
+            image_status=image.state if image is not None else None,
+            image_url=image.original_storage_key if ready and image is not None else None,
+            thumbnail_url=image.thumbnail_storage_key if ready and image is not None else None,
             available_to_players=ready,
             status_url=f"/api/v1/content/cards/{card_id}/image-status",
-            attempts=image.attempts,
-            last_error=image.sanitized_error,
+            attempts=image.attempts if image is not None else 0,
+            last_error=image.sanitized_error if image is not None else None,
             version=model.version,
         )
 
     async def requeue_failed(self, card_id: str) -> bool:
         model = await self._get_card_model(card_id, for_update=True)
-        if model is None or model.image.state != CardImageState.FAILED.value:
+        if model is None or model.image is None or model.image.state != CardImageState.FAILED.value:
             return False
         model.image.state = CardImageState.PENDING.value
         model.image.attempts = 0
@@ -352,7 +350,7 @@ class SqlCardImageRepository(ICardImageRepository):
     @staticmethod
     def _projection_payload(model: CardModel) -> dict[str, JsonValue]:
         image = model.image
-        ready = image.state == CardImageState.READY.value
+        ready = image is not None and image.state == CardImageState.READY.value
         ability: dict[str, JsonValue] = {
             "code": model.ability.code,
             "name": model.ability.name,
@@ -370,17 +368,15 @@ class SqlCardImageRepository(ICardImageRepository):
             "card_type": model.card_type,
             "rarity": model.rarity,
             "ability": ability,
-            "image_status": image.state,
-            "image_url": image.original_storage_key if ready else None,
-            "thumbnail_url": image.thumbnail_storage_key if ready else None,
+            "image_status": image.state if image is not None else None,
+            "image_url": image.original_storage_key if ready and image is not None else None,
+            "thumbnail_url": image.thumbnail_storage_key if ready and image is not None else None,
             "available_to_players": ready,
             "status_url": f"/api/v1/content/cards/{model.id}/image-status",
         }
 
     @classmethod
-    def _make_event(
-        cls, model: CardModel, version: int, event_type: str
-    ) -> CardCreatedEventDTO:
+    def _make_event(cls, model: CardModel, version: int, event_type: str) -> CardCreatedEventDTO:
         event_id = str(uuid.uuid4())
         return CardCreatedEventDTO(
             event_id=event_id,

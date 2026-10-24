@@ -95,20 +95,29 @@ class CardImageMetadata(ValueObject):
     width: int
     height: int
 
+    MIN_WIDTH = 300
+    MIN_HEIGHT = 420
+    ASPECT_TOLERANCE = 0.05
+
     def __post_init__(self) -> None:
         if (
             not isinstance(self.image_format, CardImageFormat)
             or self.byte_size < 1
             or self.byte_size > 5_000_000
-            or self.width < 600
-            or self.height < 840
-            or self.width * 7 != self.height * 5
+            or self.width < self.MIN_WIDTH
+            or self.height < self.MIN_HEIGHT
+            or not self._has_card_aspect(self.width, self.height)
         ):
             raise InvalidCardImageMetadataError(
                 byte_size=self.byte_size,
                 width=self.width,
                 height=self.height,
             )
+
+    @classmethod
+    def _has_card_aspect(cls, width: int, height: int) -> bool:
+        target_ratio = 5 / 7
+        return abs((width / height) / target_ratio - 1) <= cls.ASPECT_TOLERANCE
 
 
 @dataclass(frozen=True)

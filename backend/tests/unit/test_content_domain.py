@@ -162,9 +162,9 @@ class TestCardDomain:
         [
             {"byte_size": 0, "width": 600, "height": 840},
             {"byte_size": 5_000_001, "width": 600, "height": 840},
-            {"byte_size": 1_000, "width": 599, "height": 840},
-            {"byte_size": 1_000, "width": 600, "height": 839},
-            {"byte_size": 1_000, "width": 600, "height": 841},
+            {"byte_size": 1_000, "width": 299, "height": 420},
+            {"byte_size": 1_000, "width": 300, "height": 419},
+            {"byte_size": 1_000, "width": 300, "height": 500},
         ],
     )
     def test_invalid_original_metadata_is_rejected(
