@@ -1,17 +1,9 @@
-import contextvars
 import uuid
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
-CORRELATION_ID_CTX: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default=""
-)
-
-
-def get_current_correlation_id() -> str:
-    """Retorna el ID de correlación activo para la solicitud actual."""
-    return CORRELATION_ID_CTX.get()
+from src.shared.domain.correlation import set_current_correlation_id
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -26,7 +18,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         header_correlation_id = request.headers.get("X-Correlation-ID")
         correlation_id = header_correlation_id or f"req-{uuid.uuid4()}"
 
-        CORRELATION_ID_CTX.set(correlation_id)
+        set_current_correlation_id(correlation_id)
         request.state.correlation_id = correlation_id
 
         response: Response = await call_next(request)

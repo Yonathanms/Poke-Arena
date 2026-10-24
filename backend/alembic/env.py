@@ -9,6 +9,7 @@ from alembic import context
 from src.modules.content.infrastructure.models import CardModel, LocationModel  # noqa: F401
 from src.shared.infrastructure.config import get_settings
 from src.shared.infrastructure.database import Base
+from src.shared.infrastructure.models import IdempotencyRecordModel, OutboxModel  # noqa: F401
 
 config = context.config
 settings = get_settings()

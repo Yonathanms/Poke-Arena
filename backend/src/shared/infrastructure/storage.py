@@ -30,6 +30,15 @@ class LocalFileStorage:
         relative_path = os.path.relpath(file_path, self.base_dir)
         return f"/uploads/{relative_path.replace(os.sep, '/')}"
 
+    async def delete_file(self, file_url: str) -> None:
+        """Elimina un archivo del almacenamiento local a partir de su URL pública relativa."""
+        clean_path = file_url.lstrip("/")
+        if clean_path.startswith("uploads/"):
+            clean_path = clean_path[len("uploads/") :]
+        target_file = self.base_dir / clean_path
+        if target_file.exists():
+            target_file.unlink(missing_ok=True)
+
 
 def get_file_storage() -> LocalFileStorage:
     return LocalFileStorage()

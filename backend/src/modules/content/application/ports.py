@@ -35,6 +35,18 @@ class IImageProcessorPort(Protocol):
         ...
 
 
+class IImageStoragePort(Protocol):
+    """Puerto de salida: Almacenamiento de archivos de imagen (volumen local / Azure Blob)."""
+
+    async def save_file(self, content: bytes, extension: str, subfolder: str = "") -> str:
+        """Guarda el binario y retorna la URL/ruta pública relativa del archivo."""
+        ...
+
+    async def delete_file(self, file_url: str) -> None:
+        """Elimina el archivo del almacenamiento (rollback de compensación)."""
+        ...
+
+
 class ICardSearchProjectionPort(Protocol):
     """Puerto de salida: Proyecciones de lectura rápida en MongoDB (RNF-ALM-01, US 2.1.2)."""
 

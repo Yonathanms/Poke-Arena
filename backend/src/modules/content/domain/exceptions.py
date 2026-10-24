@@ -1,4 +1,6 @@
-from src.shared.domain.exceptions import DomainError
+"""Excepciones de Dominio del Módulo Content (Reglas de Negocio)."""
+
+from src.shared.domain.exceptions import ConflictError, DomainError, EntityNotFoundError
 
 
 class InvalidCardCostError(DomainError):
@@ -12,7 +14,6 @@ class InvalidCardCostError(DomainError):
                     "issue": f"Valor recibido ({cost}) fuera del rango permitido [1..6].",
                 }
             ],
-            status_code=400,
         )
 
 
@@ -22,7 +23,6 @@ class InvalidCardPowerError(DomainError):
             message="El poder de la carta no puede ser negativo.",
             code="CATALOG_INVALID_CARD_POWER",
             details=[{"field": "power", "issue": f"Valor recibido ({power}) menor que 0."}],
-            status_code=400,
         )
 
 
@@ -34,32 +34,22 @@ class InvalidImageAspectRatioError(DomainError):
             details=[
                 {"resource": resource_type, "expected": expected_ratio, "actual": actual_ratio}
             ],
-            status_code=400,
         )
 
 
-class DuplicateCardCodeError(DomainError):
+class DuplicateCardCodeError(ConflictError):
     def __init__(self, code_val: str) -> None:
         super().__init__(
             message=f"Ya existe una carta registrada con el código '{code_val}'.",
             code="CATALOG_DUPLICATE_CARD_CODE",
-            status_code=409,
         )
 
 
-class CardNotFoundError(DomainError):
+class CardNotFoundError(EntityNotFoundError):
     def __init__(self, identifier: str) -> None:
-        super().__init__(
-            message=f"La carta con identificador '{identifier}' no fue encontrada.",
-            code="CATALOG_CARD_NOT_FOUND",
-            status_code=404,
-        )
+        super().__init__(entity_name="Carta", identifier=identifier)
 
 
-class LocationNotFoundError(DomainError):
+class LocationNotFoundError(EntityNotFoundError):
     def __init__(self, identifier: str) -> None:
-        super().__init__(
-            message=f"La ubicación con identificador '{identifier}' no fue encontrada.",
-            code="CATALOG_LOCATION_NOT_FOUND",
-            status_code=404,
-        )
+        super().__init__(entity_name="Ubicación", identifier=identifier)

@@ -7,20 +7,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from src.modules.content.presentation.routers import content_router
+from src.shared.domain.correlation import get_current_correlation_id
 from src.shared.infrastructure.config import get_settings
 from src.shared.infrastructure.database import (
     Base,
     read_engine,
     write_engine,
 )
+from src.shared.infrastructure.logging import setup_logging
 from src.shared.infrastructure.mongo import close_mongo_connection, get_mongo_db
 from src.shared.presentation.exception_handlers import register_exception_handlers
 from src.shared.presentation.middlewares.correlation_id import (
     CorrelationIdMiddleware,
-    get_current_correlation_id,
 )
 
 settings = get_settings()
+setup_logging("DEBUG" if settings.DEBUG else "INFO")
 
 
 @asynccontextmanager

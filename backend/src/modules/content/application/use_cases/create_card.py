@@ -4,12 +4,12 @@ from src.modules.content.application.ports import (
     ICardRepository,
     ICardSearchProjectionPort,
     IImageProcessorPort,
+    IImageStoragePort,
 )
 from src.modules.content.domain.entities import Card
 from src.modules.content.domain.exceptions import DuplicateCardCodeError
 from src.modules.content.domain.value_objects import AbilitySpec, CardRarity, CardType
 from src.shared.application.unit_of_work import IUnitOfWork
-from src.shared.infrastructure.storage import LocalFileStorage
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class CreateCardUseCase:
         card_repo: ICardRepository,
         projection_port: ICardSearchProjectionPort,
         image_processor: IImageProcessorPort,
-        file_storage: LocalFileStorage,
+        file_storage: IImageStoragePort,
     ) -> None:
         self.uow = uow
         self.card_repo = card_repo
@@ -71,11 +71,20 @@ class CreateCardUseCase:
             ability=cmd.ability,
         )
 
-        # 5. Persistencia Transaccional con Unit of Work (ACID en PostgreSQL)
-        async with self.uow:
-            await self.card_repo.save(card)
+        # 5. Persistencia Transaccional con compensación de archivos huérfanos
+        saved_urls = [image_url, thumb_url]
+        try:
+            async with self.uow:
+                await self.card_repo.save(card)
 
-        # 6. Sincronizar proyección NoSQL en MongoDB para búsquedas rápidas (RNF-ALM-01)
-        await self.projection_port.sync_card_projection(card)
+            # 6. Sincronizar proyección NoSQL en MongoDB para búsquedas rápidas (RNF-ALM-01)
+            await self.projection_port.sync_card_projection(card)
+        except Exception:
+            for url in saved_urls:
+                try:
+                    await self.file_storage.delete_file(url)
+                except Exception:
+                    pass
+            raise
 
         return card

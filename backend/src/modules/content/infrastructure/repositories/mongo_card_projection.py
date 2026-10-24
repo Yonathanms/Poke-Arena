@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -54,7 +55,8 @@ class MongoCardProjection(ICardSearchProjectionPort):
         filters: dict[str, Any] = {}
 
         if name:
-            filters["name"] = {"$regex": name, "$options": "i"}
+            escaped_name = re.escape(name.strip())
+            filters["name"] = {"$regex": escaped_name, "$options": "i"}
         if card_type:
             filters["card_type"] = card_type.upper()
         if cost is not None:

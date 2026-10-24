@@ -7,8 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.shared.domain.exceptions import DomainError
-from src.shared.presentation.middlewares.correlation_id import get_current_correlation_id
+from src.shared.domain.correlation import get_current_correlation_id
+from src.shared.domain.exceptions import ConflictError, DomainError, EntityNotFoundError
 
 logger = logging.getLogger("pokearena.api")
 
@@ -44,11 +44,18 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
         cid = get_current_correlation_id()
         logger.warning(f"Domain error [{exc.code}]: {exc.message} - correlation_id={cid}")
+
+        http_status = status.HTTP_400_BAD_REQUEST
+        if isinstance(exc, EntityNotFoundError):
+            http_status = status.HTTP_404_NOT_FOUND
+        elif isinstance(exc, ConflictError):
+            http_status = status.HTTP_409_CONFLICT
+
         return _build_error_response(
             code=exc.code,
             message=exc.message,
             details=exc.details,
-            status_code=exc.status_code,
+            status_code=http_status,
         )
 
     @app.exception_handler(RequestValidationError)

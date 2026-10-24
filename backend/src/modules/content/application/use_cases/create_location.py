@@ -2,12 +2,12 @@ from dataclasses import dataclass
 
 from src.modules.content.application.ports import (
     IImageProcessorPort,
+    IImageStoragePort,
     ILocationRepository,
 )
 from src.modules.content.domain.entities import Location
 from src.modules.content.domain.value_objects import LocationEffectSpec
 from src.shared.application.unit_of_work import IUnitOfWork
-from src.shared.infrastructure.storage import LocalFileStorage
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class CreateLocationUseCase:
         uow: IUnitOfWork,
         location_repo: ILocationRepository,
         image_processor: IImageProcessorPort,
-        file_storage: LocalFileStorage,
+        file_storage: IImageStoragePort,
     ) -> None:
         self.uow = uow
         self.location_repo = location_repo
@@ -52,8 +52,17 @@ class CreateLocationUseCase:
             effect=cmd.effect,
         )
 
-        # 4. Guardar bajo Unit of Work en PostgreSQL
-        async with self.uow:
-            await self.location_repo.save(location)
+        # 4. Guardar bajo Unit of Work en PostgreSQL con compensación de archivos huérfanos
+        saved_urls = [image_url, thumb_url]
+        try:
+            async with self.uow:
+                await self.location_repo.save(location)
+        except Exception:
+            for url in saved_urls:
+                try:
+                    await self.file_storage.delete_file(url)
+                except Exception:
+                    pass
+            raise
 
         return location

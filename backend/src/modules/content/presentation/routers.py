@@ -11,8 +11,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.responses import JSONResponse
 
 from src.modules.content.application.use_cases.create_card import (
     CreateCardCommand,
@@ -22,10 +21,19 @@ from src.modules.content.application.use_cases.create_location import (
     CreateLocationCommand,
     CreateLocationUseCase,
 )
+from src.modules.content.application.use_cases.list_locations import ListLocationsUseCase
 from src.modules.content.application.use_cases.search_cards import (
     SearchCardsQuery,
     SearchCardsUseCase,
 )
+from src.modules.content.composition import (
+    get_create_card_use_case,
+    get_create_location_use_case,
+    get_idempotency_service,
+    get_list_locations_use_case,
+    get_search_cards_use_case,
+)
+from src.modules.content.domain.entities import Card, Location
 from src.modules.content.domain.value_objects import (
     AbilitySpec,
     AbilityType,
@@ -34,29 +42,57 @@ from src.modules.content.domain.value_objects import (
     LocationEffectSpec,
     LocationEffectType,
 )
-from src.modules.content.infrastructure.repositories.mongo_card_projection import (
-    MongoCardProjection,
-)
-from src.modules.content.infrastructure.repositories.sql_card_repository import (
-    SqlCardRepository,
-)
-from src.modules.content.infrastructure.repositories.sql_location_repository import (
-    SqlLocationRepository,
-)
-from src.modules.content.infrastructure.services.pillow_image_processor import (
-    PillowImageProcessor,
-)
-from src.modules.content.infrastructure.unit_of_work import SqlUnitOfWork
 from src.modules.content.presentation.schemas import (
     CardResponse,
     LocationResponse,
     SearchCardsResponse,
 )
-from src.shared.infrastructure.database import get_read_db, get_write_db
-from src.shared.infrastructure.mongo import get_mongo_db
-from src.shared.infrastructure.storage import get_file_storage
+from src.shared.application.ports import IIdempotencyService
 
 content_router = APIRouter(prefix="/content")
+
+
+# ------------------------------------------------------------------------------
+# Mapeo Dominio -> DTO de respuesta HTTP
+# ------------------------------------------------------------------------------
+def _card_to_response(card: Card) -> CardResponse:
+    ability_schema = None
+    if card.ability:
+        ability_schema = {
+            "ability_type": card.ability.ability_type,
+            "description": card.ability.description,
+            "params": card.ability.params,
+        }
+    return CardResponse(
+        id=card.id,
+        code=card.code,
+        name=card.name,
+        cost=card.cost,
+        power=card.power,
+        card_type=card.card_type,
+        rarity=card.rarity,
+        image_url=card.image_url,
+        thumbnail_url=card.thumbnail_url,
+        ability=ability_schema,
+    )
+
+
+def _location_to_response(location: Location) -> LocationResponse:
+    return LocationResponse(
+        id=location.id,
+        name=location.name,
+        image_url=location.image_url,
+        thumbnail_url=location.thumbnail_url,
+        effect=(
+            {
+                "effect_type": location.effect.effect_type,
+                "description": location.effect.description,
+                "params": location.effect.params,
+            }
+            if location.effect
+            else None
+        ),
+    )
 
 
 # ------------------------------------------------------------------------------
@@ -81,9 +117,16 @@ async def create_card(
     ability_description: Annotated[str | None, Form()] = None,
     ability_params_json: Annotated[str | None, Form()] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-    db: AsyncSession = Depends(get_write_db),
-    mongo_db: AsyncIOMotorDatabase[Any] = Depends(get_mongo_db),
+    use_case: CreateCardUseCase = Depends(get_create_card_use_case),
+    idempotency_service: IIdempotencyService = Depends(get_idempotency_service),
 ) -> Any:
+    if idempotency_key:
+        cached = await idempotency_service.get_recorded_response(
+            idempotency_key, "/api/v1/content/cards"
+        )
+        if cached:
+            return JSONResponse(content=cached["body"], status_code=cached["status_code"])
+
     image_bytes = await image.read()
 
     ability: AbilitySpec | None = None
@@ -94,20 +137,6 @@ async def create_card(
             description=ability_description or "",
             params=params,
         )
-
-    uow = SqlUnitOfWork(db)
-    card_repo = SqlCardRepository(db)
-    projection_port = MongoCardProjection(mongo_db)
-    image_processor = PillowImageProcessor()
-    storage = get_file_storage()
-
-    use_case = CreateCardUseCase(
-        uow=uow,
-        card_repo=card_repo,
-        projection_port=projection_port,
-        image_processor=image_processor,
-        file_storage=storage,
-    )
 
     card = await use_case.execute(
         CreateCardCommand(
@@ -121,27 +150,17 @@ async def create_card(
             ability=ability,
         )
     )
+    response_dto = _card_to_response(card)
 
-    ability_schema = None
-    if card.ability:
-        ability_schema = {
-            "ability_type": card.ability.ability_type,
-            "description": card.ability.description,
-            "params": card.ability.params,
-        }
+    if idempotency_key:
+        await idempotency_service.record_response(
+            idempotency_key,
+            "/api/v1/content/cards",
+            status.HTTP_201_CREATED,
+            response_dto.model_dump(),
+        )
 
-    return CardResponse(
-        id=card.id,
-        code=card.code,
-        name=card.name,
-        cost=card.cost,
-        power=card.power,
-        card_type=card.card_type,
-        rarity=card.rarity,
-        image_url=card.image_url,
-        thumbnail_url=card.thumbnail_url,
-        ability=ability_schema,
-    )
+    return response_dto
 
 
 # ------------------------------------------------------------------------------
@@ -161,11 +180,8 @@ async def search_cards(
     rarity: Annotated[str | None, Query(description="Filtrar por rareza")] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    mongo_db: AsyncIOMotorDatabase[Any] = Depends(get_mongo_db),
+    use_case: SearchCardsUseCase = Depends(get_search_cards_use_case),
 ) -> Any:
-    projection_port = MongoCardProjection(mongo_db)
-    use_case = SearchCardsUseCase(projection_port)
-
     result = await use_case.execute(
         SearchCardsQuery(
             name=name,
@@ -202,8 +218,16 @@ async def create_location(
     image: Annotated[UploadFile, File(description="Imagen proporción 4:3")],
     effect_params_json: Annotated[str | None, Form()] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-    db: AsyncSession = Depends(get_write_db),
+    use_case: CreateLocationUseCase = Depends(get_create_location_use_case),
+    idempotency_service: IIdempotencyService = Depends(get_idempotency_service),
 ) -> Any:
+    if idempotency_key:
+        cached = await idempotency_service.get_recorded_response(
+            idempotency_key, "/api/v1/content/locations"
+        )
+        if cached:
+            return JSONResponse(content=cached["body"], status_code=cached["status_code"])
+
     image_bytes = await image.read()
     params = json.loads(effect_params_json) if effect_params_json else {}
 
@@ -213,18 +237,6 @@ async def create_location(
         params=params,
     )
 
-    uow = SqlUnitOfWork(db)
-    location_repo = SqlLocationRepository(db)
-    image_processor = PillowImageProcessor()
-    storage = get_file_storage()
-
-    use_case = CreateLocationUseCase(
-        uow=uow,
-        location_repo=location_repo,
-        image_processor=image_processor,
-        file_storage=storage,
-    )
-
     location = await use_case.execute(
         CreateLocationCommand(
             name=name,
@@ -232,22 +244,17 @@ async def create_location(
             image_bytes=image_bytes,
         )
     )
+    response_dto = _location_to_response(location)
 
-    return LocationResponse(
-        id=location.id,
-        name=location.name,
-        image_url=location.image_url,
-        thumbnail_url=location.thumbnail_url,
-        effect=(
-            {
-                "effect_type": location.effect.effect_type,
-                "description": location.effect.description,
-                "params": location.effect.params,
-            }
-            if location.effect
-            else None
-        ),
-    )
+    if idempotency_key:
+        await idempotency_service.record_response(
+            idempotency_key,
+            "/api/v1/content/locations",
+            status.HTTP_201_CREATED,
+            response_dto.model_dump(),
+        )
+
+    return response_dto
 
 
 # ------------------------------------------------------------------------------
@@ -261,25 +268,7 @@ async def create_location(
     summary="Listar ubicaciones disponibles (consulta servida desde réplica)",
 )
 async def list_locations(
-    db: AsyncSession = Depends(get_read_db),
+    use_case: ListLocationsUseCase = Depends(get_list_locations_use_case),
 ) -> Any:
-    location_repo = SqlLocationRepository(db)
-    locations = await location_repo.list_all()
-    return [
-        LocationResponse(
-            id=loc.id,
-            name=loc.name,
-            image_url=loc.image_url,
-            thumbnail_url=loc.thumbnail_url,
-            effect=(
-                {
-                    "effect_type": loc.effect.effect_type,
-                    "description": loc.effect.description,
-                    "params": loc.effect.params,
-                }
-                if loc.effect
-                else None
-            ),
-        )
-        for loc in locations
-    ]
+    locations = await use_case.execute()
+    return [_location_to_response(loc) for loc in locations]

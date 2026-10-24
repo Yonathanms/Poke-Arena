@@ -9,13 +9,11 @@ class DomainError(Exception):
         message: str,
         code: str = "DOMAIN_ERROR",
         details: list[dict[str, Any]] | None = None,
-        status_code: int = 400,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
         self.details = details or []
-        self.status_code = status_code
 
 
 class EntityNotFoundError(DomainError):
@@ -25,7 +23,6 @@ class EntityNotFoundError(DomainError):
         super().__init__(
             message=f"{entity_name} con identificador '{identifier}' no fue encontrado.",
             code=f"{entity_name.upper()}_NOT_FOUND",
-            status_code=404,
         )
 
 
@@ -36,5 +33,4 @@ class ConflictError(DomainError):
         super().__init__(
             message=message,
             code=code,
-            status_code=409,
         )
