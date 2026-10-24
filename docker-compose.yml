@@ -1,0 +1,175 @@
+# ==============================================================================
+# POKÉ-ARENA - ORQUESTACIÓN LOCAL CON DOCKER COMPOSE
+#
+# Modos de ejecución:
+# 1. Modo Desarrollo Diario (DX Rápido):
+#    docker compose up -d
+#    (Levanta únicamente Postgres Master, Réplica y MongoDB con puertos expuestos)
+#
+# 2. Modo Evaluación Completo (RNF-INF-01 / RNF-REN-03 / RNF-DIS-02):
+#    docker compose --profile full up --build
+#    (Levanta todo el sistema: DBs + 2 réplicas de FastAPI + Nginx + Frontend)
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. PostgreSQL 16 Primario (Transaccional ACID / WriteSession)
+  # ----------------------------------------------------------------------------
+  postgres-master:
+    image: postgres:16-alpine
+    container_name: pokearena-postgres-master
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_MASTER_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-pokearena_db}
+    volumes:
+      - pgmaster_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-pokearena_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 2. PostgreSQL 16 Réplica (Lecturas no críticas / ReadSession - RNF-DIS-02)
+  # ----------------------------------------------------------------------------
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: pokearena-postgres-replica
+    restart: unless-stopped
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    ports:
+      - "${POSTGRES_REPLICA_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-pokearena_db}
+    volumes:
+      - pgreplica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-pokearena_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 3. MongoDB 7 (Proyecciones de Catálogo NoSQL y Bitácora - RNF-ALM-01)
+  # ----------------------------------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    container_name: pokearena-mongo
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-mongoadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongo_secure_pass_2026}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-pokearena_catalog}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 4. Backend Instancia 1 (FastAPI - RNF-REN-03)
+  # ----------------------------------------------------------------------------
+  backend-1:
+    profiles: ["full"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pokearena-backend-1
+    restart: unless-stopped
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      APP_INSTANCE_ID: "backend-1"
+      DATABASE_WRITE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-master:5432/${POSTGRES_DB:-pokearena_db}
+      DATABASE_READ_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-replica:5432/${POSTGRES_DB:-pokearena_db}
+      MONGO_URL: mongodb://${MONGO_USER:-mongoadmin}:${MONGO_PASSWORD:-mongo_secure_pass_2026}@mongo:27017/${MONGO_DB:-pokearena_catalog}?authSource=admin
+      UPLOAD_DIR: /app/uploads
+      ALLOWED_ORIGINS: "http://localhost,http://localhost:80,http://nginx"
+    volumes:
+      - uploads_data:/app/uploads
+
+  # ----------------------------------------------------------------------------
+  # 5. Backend Instancia 2 (FastAPI - RNF-REN-03 Balanceo de Carga)
+  # ----------------------------------------------------------------------------
+  backend-2:
+    profiles: ["full"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pokearena-backend-2
+    restart: unless-stopped
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      APP_INSTANCE_ID: "backend-2"
+      DATABASE_WRITE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-master:5432/${POSTGRES_DB:-pokearena_db}
+      DATABASE_READ_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_secure_pass_2026}@postgres-replica:5432/${POSTGRES_DB:-pokearena_db}
+      MONGO_URL: mongodb://${MONGO_USER:-mongoadmin}:${MONGO_PASSWORD:-mongo_secure_pass_2026}@mongo:27017/${MONGO_DB:-pokearena_catalog}?authSource=admin
+      UPLOAD_DIR: /app/uploads
+      ALLOWED_ORIGINS: "http://localhost,http://localhost:80,http://nginx"
+    volumes:
+      - uploads_data:/app/uploads
+
+  # ----------------------------------------------------------------------------
+  # 6. Frontend (React + Vite + TypeScript)
+  # ----------------------------------------------------------------------------
+  frontend:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pokearena-frontend
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # 7. Nginx (Balanceador de Carga y Proxy Inverso - RNF-REN-03)
+  # ----------------------------------------------------------------------------
+  nginx:
+    profiles: ["full"]
+    image: nginx:alpine
+    container_name: pokearena-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend-1
+      - backend-2
+      - frontend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - uploads_data:/var/www/uploads:ro
+
+# ==============================================================================
+# VOLÚMENES PERSISTENTES
+# ==============================================================================
+volumes:
+  pgmaster_data:
+    name: pokearena_pgmaster_data
+  pgreplica_data:
+    name: pokearena_pgreplica_data
+  mongo_data:
+    name: pokearena_mongo_data
+  uploads_data:
+    name: pokearena_uploads_data
