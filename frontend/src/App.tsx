@@ -115,7 +115,23 @@ export const App: React.FC = () => {
           <CreateCardForm onSuccess={() => setActiveTab("catalog")} />
         )}
         {activeTab === "locations" && <LocationList />}
-        {activeTab === "create-location" && (
+        {activeTab === "create-location" && !session && (
+          <section className="glass-panel rounded-2xl border border-amber-500/30 p-8 text-center">
+            <h2 className="text-lg font-semibold text-slate-100">Inicia sesión para crear ubicaciones</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Usa el botón de Google en la barra superior. Se requiere una cuenta autorizada como administradora.
+            </p>
+          </section>
+        )}
+        {activeTab === "create-location" && session && session.role !== "PLATFORM_ADMIN" && (
+          <section className="glass-panel rounded-2xl border border-red-500/30 p-8 text-center">
+            <h2 className="text-lg font-semibold text-slate-100">Permiso de administrador requerido</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              La cuenta autenticada no tiene permiso para crear ubicaciones.
+            </p>
+          </section>
+        )}
+        {activeTab === "create-location" && session?.role === "PLATFORM_ADMIN" && (
           <CreateLocationForm onSuccess={() => setActiveTab("locations")} />
         )}
       </main>

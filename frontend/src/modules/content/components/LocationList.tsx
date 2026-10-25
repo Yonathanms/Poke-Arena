@@ -81,12 +81,25 @@ export const LocationList: React.FC = () => {
                 </div>
               </div>
 
-              {/* Effect Description */}
-              <div className="p-4 bg-arena-card/90">
+              {/* Details */}
+              <div className="p-4 bg-arena-card/90 space-y-2">
+                {loc.description && (
+                  <p className="text-xs text-slate-400">{loc.description}</p>
+                )}
                 <p className="text-xs text-slate-300 flex items-start gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
                   <span>{loc.effect.description}</span>
                 </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-700/60 text-slate-300">
+                    Límite: {loc.card_limit === 0 ? "Sin cartas" : `${loc.card_limit} carta${loc.card_limit !== 1 ? "s" : ""}`}
+                  </span>
+                  {loc.energy_bonus && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300">
+                      +{loc.energy_bonus.amount} E {loc.energy_bonus.mode === "FIJA" ? "/turno" : "/carta"}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           ))}

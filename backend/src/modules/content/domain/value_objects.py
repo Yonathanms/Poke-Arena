@@ -6,6 +6,8 @@ from src.modules.content.domain.exceptions import (
     InvalidAbilityCodeError,
     InvalidCardCodeError,
     InvalidCardImageMetadataError,
+    InvalidEnergyBonusError,
+    InvalidLocationEffectParamsError,
 )
 from src.shared.domain.value_object import ValueObject
 
@@ -159,6 +161,24 @@ class LocationEffectType(StrEnum):
     LIMITE_CARTAS = "LIMITE_CARTAS"
 
 
+class EnergyBonusMode(StrEnum):
+    FIJA = "FIJA"
+    POR_CARTAS = "POR_CARTAS"
+
+
+@dataclass(frozen=True)
+class EnergyBonusSpec(ValueObject):
+    """Bonificación de energía por turno: fija o proporcional a cartas en ubicación."""
+
+    mode: EnergyBonusMode
+    amount: int
+
+    def __post_init__(self) -> None:
+        max_val = 3 if self.mode == EnergyBonusMode.FIJA else 2
+        if not (0 <= self.amount <= max_val):
+            raise InvalidEnergyBonusError(self.mode.value, self.amount, max_val)
+
+
 @dataclass(frozen=True)
 class AbilitySpec(ValueObject):
     """Especificación de habilidad de una carta."""
@@ -168,6 +188,13 @@ class AbilitySpec(ValueObject):
     params: dict[str, Any]
 
 
+_CATALOG_EFFECT_TYPES = {
+    LocationEffectType.BONIFICACION_PODER,
+    LocationEffectType.MODIFICADOR_COSTO,
+    LocationEffectType.RESTRICCION_TURNO,
+}
+
+
 @dataclass(frozen=True)
 class LocationEffectSpec(ValueObject):
     """Especificación de efecto de una ubicación."""
@@ -175,3 +202,51 @@ class LocationEffectSpec(ValueObject):
     effect_type: LocationEffectType
     description: str
     params: dict[str, Any]
+
+    @staticmethod
+    def validate_params_for_creation(
+        effect_type: LocationEffectType, params: dict[str, Any]
+    ) -> None:
+        """Valida que los parámetros sean correctos para el tipo de efecto dado."""
+        if effect_type not in _CATALOG_EFFECT_TYPES:
+            raise InvalidLocationEffectParamsError(
+                effect_type.value,
+                "Tipo de efecto no disponible en el catálogo.",
+            )
+        valid_card_types = {ct.value for ct in CardType}
+        if effect_type == LocationEffectType.BONIFICACION_PODER:
+            if params.get("card_type") not in valid_card_types:
+                raise InvalidLocationEffectParamsError(
+                    effect_type.value,
+                    "Se requiere 'card_type' con un tipo válido (FUE, AGU, PLA, ELE, PSI, LUC).",
+                )
+            amount = params.get("amount")
+            if not isinstance(amount, int) or not (-5 <= amount <= 5):
+                raise InvalidLocationEffectParamsError(
+                    effect_type.value,
+                    "Se requiere 'amount' entero en el rango [-5..+5].",
+                )
+        elif effect_type == LocationEffectType.MODIFICADOR_COSTO:
+            amount = params.get("amount")
+            if not isinstance(amount, int) or not (-5 <= amount <= 5):
+                raise InvalidLocationEffectParamsError(
+                    effect_type.value,
+                    "Se requiere 'amount' entero en el rango [-5..+5].",
+                )
+            if "card_type" in params and params["card_type"] not in valid_card_types:
+                raise InvalidLocationEffectParamsError(
+                    effect_type.value,
+                    "Si se indica 'card_type', debe ser un tipo válido (FUE, AGU, PLA, ELE, PSI, LUC).",
+                )
+        elif effect_type == LocationEffectType.RESTRICCION_TURNO:
+            turns = params.get("turns")
+            if not isinstance(turns, list) or len(turns) == 0:
+                raise InvalidLocationEffectParamsError(
+                    effect_type.value,
+                    "Se requiere 'turns' como lista no vacía de números de turno.",
+                )
+            if not all(isinstance(t, int) and t > 0 for t in turns):
+                raise InvalidLocationEffectParamsError(
+                    effect_type.value,
+                    "Cada turno debe ser un entero positivo.",
+                )

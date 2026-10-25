@@ -304,3 +304,49 @@ class InvalidSearchFilterError(DomainError):
             code="CATALOG_INVALID_SEARCH_FILTER",
             details=[{"field": field, "issue": issue}],
         )
+
+
+class InvalidLocationNameError(DomainError):
+    def __init__(self) -> None:
+        super().__init__(
+            message="El nombre de la ubicación es obligatorio y no puede superar 100 caracteres.",
+            code="CATALOG_INVALID_LOCATION_NAME",
+            details=[{"field": "name", "issue": "Indique entre 1 y 100 caracteres no blancos."}],
+        )
+
+
+class InvalidCardLimitError(DomainError):
+    def __init__(self, value: int) -> None:
+        super().__init__(
+            message="El límite de cartas de una ubicación debe ser un entero entre 0 y 5.",
+            code="CATALOG_INVALID_CARD_LIMIT",
+            details=[
+                {
+                    "field": "card_limit",
+                    "issue": f"Valor recibido ({value}) fuera del rango permitido [0..5].",
+                }
+            ],
+        )
+
+
+class InvalidEnergyBonusError(DomainError):
+    def __init__(self, mode: str, value: int, max_val: int) -> None:
+        super().__init__(
+            message=f"La bonificación de energía en modo {mode} debe estar entre 0 y {max_val}.",
+            code="CATALOG_INVALID_ENERGY_BONUS",
+            details=[
+                {
+                    "field": "energy_bonus",
+                    "issue": f"Modo {mode}: valor recibido ({value}) fuera del rango [0..{max_val}].",
+                }
+            ],
+        )
+
+
+class InvalidLocationEffectParamsError(DomainError):
+    def __init__(self, effect_type: str, issue: str) -> None:
+        super().__init__(
+            message=f"Los parámetros del efecto '{effect_type}' son inválidos.",
+            code="CATALOG_INVALID_LOCATION_EFFECT_PARAMS",
+            details=[{"field": "effect_params", "issue": issue}],
+        )

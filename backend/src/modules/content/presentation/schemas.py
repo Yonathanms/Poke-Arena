@@ -7,6 +7,7 @@ from src.modules.content.domain.value_objects import (
     CardImageState,
     CardRarity,
     CardType,
+    EnergyBonusMode,
     LocationEffectType,
 )
 
@@ -89,9 +90,17 @@ class SearchCardsResponse(BaseModel):
     limit: int
 
 
+class EnergyBonusResponse(BaseModel):
+    mode: EnergyBonusMode
+    amount: int
+
+
 class LocationResponse(BaseModel):
     id: str
     name: str
+    description: str = ""
     image_url: str
     thumbnail_url: str | None = None
     effect: LocationEffectSchema
+    card_limit: int = 5
+    energy_bonus: EnergyBonusResponse | None = None

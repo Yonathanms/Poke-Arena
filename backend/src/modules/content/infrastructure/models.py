@@ -183,12 +183,18 @@ class LocationModel(Base):
     """Modelo relacional de Ubicación en PostgreSQL."""
 
     __tablename__ = "catalog_locations"
+    __table_args__ = (
+        CheckConstraint("card_limit BETWEEN 0 AND 5", name="ck_catalog_locations_card_limit"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     image_url: Mapped[str] = mapped_column(String(255), nullable=False)
     thumbnail_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     effect_spec: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    card_limit: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=5)
+    energy_bonus_spec: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
