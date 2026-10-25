@@ -51,6 +51,8 @@ from src.modules.content.domain.value_objects import (
     AbilityCode,
     CardRarity,
     CardType,
+    EnergyBonusMode,
+    EnergyBonusSpec,
     LocationEffectSpec,
     LocationEffectType,
 )
@@ -58,6 +60,7 @@ from src.modules.content.presentation.schemas import (
     CardAbilitySummaryResponse,
     CardCreatedResponse,
     CardImageStatusResponse,
+    EnergyBonusResponse,
     LocationResponse,
     SearchCardsResponse,
 )
@@ -70,6 +73,7 @@ def _location_to_response(location: Location) -> LocationResponse:
     return LocationResponse(
         id=location.id,
         name=location.name,
+        description=location.description,
         image_url=location.image_url,
         thumbnail_url=location.thumbnail_url,
         effect=(
@@ -79,6 +83,15 @@ def _location_to_response(location: Location) -> LocationResponse:
                 "params": location.effect.params,
             }
             if location.effect
+            else None
+        ),
+        card_limit=location.card_limit,
+        energy_bonus=(
+            EnergyBonusResponse(
+                mode=location.energy_bonus.mode,
+                amount=location.energy_bonus.amount,
+            )
+            if location.energy_bonus
             else None
         ),
     )
@@ -227,12 +240,29 @@ async def get_card_image_status(
     status_code=status.HTTP_200_OK,
     tags=["Cards"],
     summary="Buscar cartas en el catálogo con filtros",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Parámetros de búsqueda inválidos."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Credencial ausente o inválida."},
+        status.HTTP_403_FORBIDDEN: {"description": "Se requiere permiso de administrador."},
+    },
 )
 async def search_cards(
-    name: Annotated[str | None, Query(description="Filtrar por nombre")] = None,
+    _actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
+    name: Annotated[
+        str | None, Query(description="Filtrar por nombre (parcial, insensible a diacríticos)")
+    ] = None,
+    code: Annotated[str | None, Query(description="Filtrar por código exacto (ej. PKA-FUE-001)")] = None,
     card_type: Annotated[str | None, Query(description="Filtrar por tipo elemental")] = None,
-    cost: Annotated[int | None, Query(description="Filtrar por costo")] = None,
+    cost: Annotated[int | None, Query(ge=0, le=10, description="Costo exacto [0..10]")] = None,
+    cost_min: Annotated[int | None, Query(ge=0, le=10, description="Costo mínimo")] = None,
+    cost_max: Annotated[int | None, Query(ge=0, le=10, description="Costo máximo")] = None,
+    power: Annotated[int | None, Query(ge=-20, le=20, description="Poder exacto [-20..20]")] = None,
+    power_min: Annotated[int | None, Query(ge=-20, le=20, description="Poder mínimo")] = None,
+    power_max: Annotated[int | None, Query(ge=-20, le=20, description="Poder máximo")] = None,
     rarity: Annotated[str | None, Query(description="Filtrar por rareza")] = None,
+    ability_code: Annotated[
+        str | None, Query(description="Filtrar por código de habilidad (ej. HAB-001)")
+    ] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     use_case: SearchCardsUseCase = Depends(get_search_cards_use_case),
@@ -240,9 +270,16 @@ async def search_cards(
     result = await use_case.execute(
         SearchCardsQuery(
             name=name,
+            code=code,
             card_type=card_type,
             cost=cost,
+            cost_min=cost_min,
+            cost_max=cost_max,
+            power=power,
+            power_min=power_min,
+            power_max=power_max,
             rarity=rarity,
+            ability_code=ability_code,
             skip=skip,
             limit=limit,
         )
@@ -257,7 +294,7 @@ async def search_cards(
 
 
 # ------------------------------------------------------------------------------
-# 3. Crear Ubicación de Juego (F-03 / US 2.1.3 - Requiere WriteSession)
+# 3. Crear Ubicación de Juego (F-03 / US 2.1.3 - Requiere WriteSession Admin)
 # ------------------------------------------------------------------------------
 @content_router.post(
     "/locations",
@@ -265,14 +302,25 @@ async def search_cards(
     status_code=status.HTTP_201_CREATED,
     tags=["Locations"],
     summary="Crear una nueva ubicación de juego",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Parámetros de efecto o campos inválidos."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Credencial ausente o inválida."},
+        status.HTTP_403_FORBIDDEN: {"description": "Se requiere permiso de administrador."},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Campos o imagen inválidos."},
+    },
 )
 async def create_location(
-    name: Annotated[str, Form(description="Nombre del lugar")],
-    effect_type: Annotated[LocationEffectType, Form(description="Tipo de efecto")],
+    name: Annotated[str, Form(description="Nombre de la ubicación (1-100 caracteres)")],
+    effect_type: Annotated[LocationEffectType, Form(description="Tipo de efecto del catálogo")],
     effect_description: Annotated[str, Form(description="Descripción del efecto")],
-    image: Annotated[UploadFile, File(description="Imagen proporción 4:3")],
+    image: Annotated[UploadFile, File(description="Imagen 4:3, PNG/JPG/WebP, máx. 5 MB")],
+    description: Annotated[str, Form(description="Descripción de la ubicación")] = "",
+    card_limit: Annotated[int, Form(ge=0, le=5, description="Límite de cartas por jugador [0..5]")] = 5,
+    energy_bonus_mode: Annotated[EnergyBonusMode | None, Form()] = None,
+    energy_bonus_amount: Annotated[int | None, Form(ge=0)] = None,
     effect_params_json: Annotated[str | None, Form()] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    _actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
     use_case: CreateLocationUseCase = Depends(get_create_location_use_case),
     idempotency_service: IIdempotencyService = Depends(get_idempotency_service),
 ) -> Any:
@@ -292,11 +340,18 @@ async def create_location(
         params=params,
     )
 
+    energy_bonus = None
+    if energy_bonus_mode is not None and energy_bonus_amount is not None:
+        energy_bonus = EnergyBonusSpec(mode=energy_bonus_mode, amount=energy_bonus_amount)
+
     location = await use_case.execute(
         CreateLocationCommand(
             name=name,
+            description=description,
             effect=effect,
             image_bytes=image_bytes,
+            card_limit=card_limit,
+            energy_bonus=energy_bonus,
         )
     )
     response_dto = _location_to_response(location)

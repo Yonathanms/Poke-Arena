@@ -197,9 +197,13 @@ def get_create_location_use_case(
 
 
 def get_list_locations_use_case(
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncSession = Depends(get_write_db),
 ) -> ListLocationsUseCase:
-    """Lectura: ReadSession (Réplica SQL) - RNF-DIS-02."""
+    """Lectura desde el primario SQL.
+    Dev: la réplica (puerto 5433) es un contenedor independiente sin streaming
+    replication, por lo que los datos escritos al maestro nunca llegan ahí.
+    RNF-DIS-02 se demuestra con la proyección MongoDB del catálogo de cartas.
+    """
     return ListLocationsUseCase(SqlLocationRepository(db))
 
 

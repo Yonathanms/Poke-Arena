@@ -5,8 +5,10 @@ from src.modules.content.domain.exceptions import (
     AbilityRequiredError,
     CardCodeTypeMismatchError,
     InvalidCardCostError,
+    InvalidCardLimitError,
     InvalidCardNameError,
     InvalidCardPowerError,
+    InvalidLocationNameError,
 )
 from src.modules.content.domain.value_objects import (
     AbilityCode,
@@ -17,6 +19,7 @@ from src.modules.content.domain.value_objects import (
     CardRarity,
     CardThumbnailMetadata,
     CardType,
+    EnergyBonusSpec,
     LocationEffectSpec,
 )
 from src.shared.domain.entity import Entity
@@ -130,9 +133,12 @@ class Location(Entity):
     """Entidad de Ubicación donde se juegan las cartas en una partida."""
 
     name: str = ""
+    description: str = ""
     image_url: str = ""
     thumbnail_url: str | None = None
     effect: LocationEffectSpec | None = None
+    card_limit: int = 5
+    energy_bonus: EnergyBonusSpec | None = None
 
     @classmethod
     def create(
@@ -140,14 +146,26 @@ class Location(Entity):
         name: str,
         image_url: str,
         effect: LocationEffectSpec,
+        description: str = "",
+        card_limit: int = 5,
+        energy_bonus: EnergyBonusSpec | None = None,
         thumbnail_url: str | None = None,
         location_id: str | None = None,
     ) -> Self:
+        stripped_name = name.strip()
+        if not stripped_name or len(stripped_name) > 100:
+            raise InvalidLocationNameError()
+        if card_limit < 0 or card_limit > 5:
+            raise InvalidCardLimitError(card_limit)
+        stripped_desc = description.strip() if description else ""
         instance = cls(
-            name=name.strip(),
+            name=stripped_name,
+            description=stripped_desc,
             image_url=image_url,
             thumbnail_url=thumbnail_url,
             effect=effect,
+            card_limit=card_limit,
+            energy_bonus=energy_bonus,
         )
         if location_id:
             instance.id = location_id

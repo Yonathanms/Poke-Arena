@@ -225,9 +225,16 @@ class ICardSearchProjectionPort(Protocol):
     async def search_cards(
         self,
         name: str | None = None,
+        code: str | None = None,
         card_type: str | None = None,
         cost: int | None = None,
+        cost_min: int | None = None,
+        cost_max: int | None = None,
+        power: int | None = None,
+        power_min: int | None = None,
+        power_max: int | None = None,
         rarity: str | None = None,
+        ability_code: str | None = None,
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[dict[str, Any]], int]:

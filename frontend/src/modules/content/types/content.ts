@@ -17,6 +17,8 @@ export type LocationEffectType =
   | "RESTRICCION_TURNO"
   | "LIMITE_CARTAS";
 
+export type EnergyBonusMode = "FIJA" | "POR_CARTAS";
+
 export interface AbilityDTO {
   ability_type: AbilityType;
   description: string;
@@ -61,6 +63,11 @@ export interface LocationEffectDTO {
   params: Record<string, unknown>;
 }
 
+export interface EnergyBonusDTO {
+  mode: EnergyBonusMode;
+  amount: number;
+}
+
 export interface CardDTO {
   id: string;
   code: string;
@@ -80,9 +87,12 @@ export interface CardDTO {
 export interface LocationDTO {
   id: string;
   name: string;
+  description: string;
   image_url: string;
   thumbnail_url?: string | null;
   effect: LocationEffectDTO;
+  card_limit: number;
+  energy_bonus?: EnergyBonusDTO | null;
 }
 
 export interface SearchCardsResponseDTO {
