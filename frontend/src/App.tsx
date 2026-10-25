@@ -94,7 +94,7 @@ export const App: React.FC = () => {
             {authMessage}
           </div>
         )}
-        {activeTab === "catalog" && <CardList />}
+        {activeTab === "catalog" && <CardList isAuthenticated={!!session} />}
         {activeTab === "create-card" && !session && (
           <section className="glass-panel rounded-2xl border border-amber-500/30 p-8 text-center">
             <h2 className="text-lg font-semibold text-slate-100">Inicia sesión para crear cartas</h2>

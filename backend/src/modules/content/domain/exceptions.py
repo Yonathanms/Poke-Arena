@@ -278,3 +278,29 @@ class CardNotFoundError(EntityNotFoundError):
 class LocationNotFoundError(EntityNotFoundError):
     def __init__(self, identifier: str) -> None:
         super().__init__(entity_name="Ubicación", identifier=identifier)
+
+
+class InvalidSearchRangeError(DomainError):
+    def __init__(self, field: str, min_val: int, max_val: int) -> None:
+        super().__init__(
+            message=(
+                f"El rango de búsqueda de '{field}' es inválido: "
+                f"el mínimo ({min_val}) supera al máximo ({max_val})."
+            ),
+            code="CATALOG_INVALID_SEARCH_RANGE",
+            details=[
+                {
+                    "field": field,
+                    "issue": f"min={min_val} debe ser ≤ max={max_val}.",
+                }
+            ],
+        )
+
+
+class InvalidSearchFilterError(DomainError):
+    def __init__(self, field: str, issue: str) -> None:
+        super().__init__(
+            message=f"Filtro de búsqueda inválido para el campo '{field}'.",
+            code="CATALOG_INVALID_SEARCH_FILTER",
+            details=[{"field": field, "issue": issue}],
+        )

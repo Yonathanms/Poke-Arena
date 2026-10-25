@@ -227,12 +227,29 @@ async def get_card_image_status(
     status_code=status.HTTP_200_OK,
     tags=["Cards"],
     summary="Buscar cartas en el catálogo con filtros",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Parámetros de búsqueda inválidos."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Credencial ausente o inválida."},
+        status.HTTP_403_FORBIDDEN: {"description": "Se requiere permiso de administrador."},
+    },
 )
 async def search_cards(
-    name: Annotated[str | None, Query(description="Filtrar por nombre")] = None,
+    _actor: AuthenticatedCardActor = Depends(get_authenticated_card_actor),
+    name: Annotated[
+        str | None, Query(description="Filtrar por nombre (parcial, insensible a diacríticos)")
+    ] = None,
+    code: Annotated[str | None, Query(description="Filtrar por código exacto (ej. PKA-FUE-001)")] = None,
     card_type: Annotated[str | None, Query(description="Filtrar por tipo elemental")] = None,
-    cost: Annotated[int | None, Query(description="Filtrar por costo")] = None,
+    cost: Annotated[int | None, Query(ge=0, le=10, description="Costo exacto [0..10]")] = None,
+    cost_min: Annotated[int | None, Query(ge=0, le=10, description="Costo mínimo")] = None,
+    cost_max: Annotated[int | None, Query(ge=0, le=10, description="Costo máximo")] = None,
+    power: Annotated[int | None, Query(ge=-20, le=20, description="Poder exacto [-20..20]")] = None,
+    power_min: Annotated[int | None, Query(ge=-20, le=20, description="Poder mínimo")] = None,
+    power_max: Annotated[int | None, Query(ge=-20, le=20, description="Poder máximo")] = None,
     rarity: Annotated[str | None, Query(description="Filtrar por rareza")] = None,
+    ability_code: Annotated[
+        str | None, Query(description="Filtrar por código de habilidad (ej. HAB-001)")
+    ] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     use_case: SearchCardsUseCase = Depends(get_search_cards_use_case),
@@ -240,9 +257,16 @@ async def search_cards(
     result = await use_case.execute(
         SearchCardsQuery(
             name=name,
+            code=code,
             card_type=card_type,
             cost=cost,
+            cost_min=cost_min,
+            cost_max=cost_max,
+            power=power,
+            power_min=power_min,
+            power_max=power_max,
             rarity=rarity,
+            ability_code=ability_code,
             skip=skip,
             limit=limit,
         )
