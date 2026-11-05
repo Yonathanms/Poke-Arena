@@ -1,0 +1,47 @@
+==============================================================================
+GUÍA DE LA CAPA DE BASES DE DATOS (backend/src/database)
+==============================================================================
+
+Hola equipo. Este archivo resume qué contiene esta carpeta para que nadie se
+pierda ni tenga dudas durante el desarrollo o la defensa del proyecto:
+
+1. ¿QUÉ HAY EN ESTA CARPETA?
+------------------------------------------------------------------------------
+Esta carpeta contiene ÚNICAMENTE la configuración técnica y la conexión hacia
+los dos motores de base de datos que corren en Docker:
+
+* postgresql/
+  - connection.py: Configura el motor SQLAlchemy y la función get_db().
+    Cada vez que un endpoint necesita hacer consultas en SQL, pide la
+    sesión inyectada con get_db. Aquí no van tablas ni consultas SQL; solo
+    la conexión pura.
+
+* mongodb/
+  - connection.py: Configura el cliente de Motor (driver asíncrono oficial
+    de MongoDB) y provee get_mongo_db() para acceder a la base de datos
+    de catálogo.
+
+* outbox_worker.py:
+  - Script en segundo plano que implementa el patrón "Transactional Outbox".
+  - Su trabajo es tomar las cartas que se crean en PostgreSQL y replicarlas
+    hacia MongoDB en formato JSON para que las búsquedas de 10.000 cartas
+    vuelen sin hacer JOINs en SQL.
+
+
+2. ¿DÓNDE SE PONEN LAS TABLAS Y CONSULTAS?
+------------------------------------------------------------------------------
+Siguiendo la arquitectura modular limpia:
+- Las tablas y modelos NO se meten aquí en database/.
+- Cada módulo es dueño de sus datos:
+  * Tablas de Cartas -> src/modules/catalogo/gestion-cartas/domain/carta_model.py
+  * Consultas SQL    -> src/modules/catalogo/gestion-cartas/adapters/sql_carta_repository.py
+  * Búsquedas Mongo  -> src/modules/catalogo/gestion-cartas/adapters/mongo_carta_repository.py
+
+
+3. RESUMEN RÁPIDO PARA DEFENDER ANTE EL PROFESOR:
+------------------------------------------------------------------------------
+- PostgreSQL: Guarda los datos maestros transaccionales (ACID).
+- MongoDB: Guarda el catálogo optimizado para búsquedas rápidas (NoSQL).
+- outbox_worker.py: Sincroniza de PostgreSQL a MongoDB sin pérdida de datos.
+==============================================================================
+

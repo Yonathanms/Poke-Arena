@@ -6,20 +6,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from src.modules.content.infrastructure.models import (  # noqa: F401
-    AbilityModel,
-    CardCodeCounterModel,
-    CardImageModel,
-    CardModel,
-    LocationModel,
-)
-from src.modules.identity.infrastructure.models import (  # noqa: F401
-    IdentitySessionModel,
-    IdentityUserModel,
-)
-from src.shared.infrastructure.config import get_settings
-from src.shared.infrastructure.database import Base
-from src.shared.infrastructure.models import IdempotencyRecordModel, OutboxModel  # noqa: F401
+from src.database.postgresql.connection import Base
+from src.shared.config import get_settings
 
 config = context.config
 
@@ -29,7 +17,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 if config.attributes.get("connection") is None:
     settings = get_settings()
-    config.set_main_option("sqlalchemy.url", settings.DATABASE_WRITE_URL)
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 
 def run_migrations_offline() -> None:
@@ -55,7 +43,7 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     settings = get_settings()
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_WRITE_URL
+    configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
     connectable = async_engine_from_config(
         configuration,
