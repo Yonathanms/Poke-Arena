@@ -1,0 +1,96 @@
+==============================================================================
+GUÍA DE DISEÑO Y ESTRUCTURA DE MÓDULOS (backend/src/modules)
+==============================================================================
+
+Hola equipo. Lean esto antes de crear o editar código en esta carpeta.
+El objetivo es que todo el equipo trabaje con el mismo estándar y nadie se
+pierda ni haga un desorden en el código.
+
+1. RELACIÓN CON EL DIAGRAMA DE ARQUITECTURA (CAPA 3)
+------------------------------------------------------------------------------
+En nuestro diagrama de arquitectura, la Capa 3 se titula:
+"3. Lógica de Negocio y Dominio (Monolito Modular)".
+
+Cada carpeta de primer nivel aquí adentro representa exactamente un bloque
+de esa capa:
+- catalogo/     -> Reglas de cartas, tipos, rarezas y ubicaciones.
+- identidad/    -> Usuarios, roles (RBAC) y sesiones (Google OAuth / Local).
+- jugadores/    -> Colección de cartas, mazos, partidas y perfiles.
+- torneos/      -> Torneos B2B, llaves de API de partners y webhooks.
+- motor-juego/  -> Motor determinista de combate, turnos y máquina de estados.
+
+
+2. ¿QUÉ ES UN SUBMÓDULO? (Features / Gestiones)
+------------------------------------------------------------------------------
+Dentro de cada módulo grande existen submódulos que representan un "Feature"
+o gestión específica (asociada a una historia de usuario).
+
+Por ejemplo, dentro de 'catalogo/' tenemos:
+- gestion-cartas/       -> Todo lo relacionado a crear y consultar cartas.
+- gestion-ubicaciones/  -> Todo lo relacionado a crear y consultar ubicaciones.
+
+
+3. LAS 5 CARPETAS DE CADA SUBMÓDULO (Arquitectura Hexagonal Limpia)
+------------------------------------------------------------------------------
+Cada submódulo DEBE contener exactamente estas 5 carpetas:
+
+  📁 controllers/
+     - ¿Qué hace? Es la puerta de entrada HTTP desde el Frontend.
+     - Contiene: Los endpoints de FastAPI (*_controller.py) y los esquemas
+       de validación de entrada/salida de Pydantic (*_dtos.py).
+     - REGLA: El controlador NUNCA hace consultas directas a la base de datos
+       ni calcula reglas del juego. Solo recibe el JSON/FormData, valida tipos
+       con el DTO y le pasa la orden al Service.
+
+  📁 services/
+     - ¿Qué hace? Es el cerebro del caso de uso (la lógica de negocio).
+     - Contiene: Las clases de servicio (*_service.py).
+     - REGLA: Aquí se aplican las reglas del negocio (ej. validar que una
+       carta legendaria cumpla con los límites de poder, recortar imágenes
+       llamando al adaptador de Pillow, etc.). Orquesta la operación y llama
+       a los puertos necesarios.
+
+  📁 domain/
+     - ¿Qué hace? Define las entidades del juego y sus reglas fundamentales.
+     - Contiene: Los modelos de base de datos SQLAlchemy (*_model.py).
+     - REGLA: Es la estructura oficial de la tabla en PostgreSQL.
+
+  📁 ports/
+     - ¿Qué hace? Define los CONTRATOS o interfaces abstractas (equivalente
+       a los 'interface' de TypeScript/Java).
+     - Contiene: Clases abstractas (*_ports.py) con métodos que el servicio
+       necesita (ej. guardar_carta, buscar_por_codigo, procesar_imagen).
+     - REGLA: El puerto solo define la firma de las funciones; no lleva
+       código de PostgreSQL ni de MongoDB.
+
+  📁 adapters/
+     - ¿Qué hace? Son los "enchufes" que implementan técnicamente los ports.
+     - Contiene:
+       * Repositorios SQL (sql_*_repository.py): Consultas con SQLAlchemy.
+       * Repositorios Mongo (mongo_*_repository.py): Búsquedas con Motor.
+       * Adaptadores externos (imagen_*_adapter.py): Edición de fotos con Pillow.
+     - REGLA: Todo lo que toque una base de datos o librería externa vive aquí.
+
+
+4. FLUJO OBLIGATORIO DE UNA PETICIÓN (En línea recta, sin saltarse pasos)
+------------------------------------------------------------------------------
+Frontend (Pantalla / Formulario)
+       ↓ (Llamada HTTP POST o GET)
+1. Controller (Valida datos con Pydantic DTO)
+       ↓ (Llama al método del servicio)
+2. Service (Aplica reglas del negocio del juego)
+       ↓ (Usa el contrato del Port)
+3. Adapter (Ejecuta el SQL en Postgres o el JSON en MongoDB)
+       ↓ (Retorna el resultado)
+Controller responde 200/201 al Frontend en formato JSON.
+
+
+5. REGLAS DE ORO PARA EL EQUIPO (Para no hacer desastres)
+------------------------------------------------------------------------------
+✓ NUNCA hagas consultas de SQL dentro de un controller.
+✓ NUNCA mezcles código de Frontend en el Backend.
+✓ NUNCA metas tablas de un módulo dentro de otro módulo (cada submódulo es
+  dueño de su carpeta domain).
+✓ Si algo le sirve a todos los módulos por igual (como el .env o los logs),
+  NO va aquí, va en la carpeta 'src/shared/'. "como el codigo que haran para insertar imagenes en crear carta por ejemplo!!"
+==============================================================================

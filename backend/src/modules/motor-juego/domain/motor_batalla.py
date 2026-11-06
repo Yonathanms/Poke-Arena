@@ -1,0 +1,2 @@
+﻿"""Resolución determinista de turnos."""
+

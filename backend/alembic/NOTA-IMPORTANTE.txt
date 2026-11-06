@@ -1,0 +1,3 @@
+alembic contiente una carpeta llamada versions, esa carpeta es parecida a "migrations" que se utiliza mucho con TypeORM
+
+* Con alembic las migraciones se hacen con "alembic upgrade" en vez de "typeorm migration:run" y se deshacen con "alembic downgrade" en vez de "typeorm migration:revert"

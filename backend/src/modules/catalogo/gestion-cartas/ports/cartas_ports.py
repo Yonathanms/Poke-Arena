@@ -1,0 +1,2 @@
+﻿"""Interfaces/Puertos: ICartaRepository, IProcesadorImagen."""
+

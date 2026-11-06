@@ -1,0 +1,2 @@
+﻿"""Transiciones válidas de turno."""
+
