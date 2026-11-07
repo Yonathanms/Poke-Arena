@@ -1,4 +1,4 @@
-"""Contratos ORM y repositorio: DML solo en una base aislada migrada hasta 008."""
+"""Contratos ORM y repositorio sobre una base aislada en la revisión objetivo."""
 
 import ast
 import asyncio
@@ -123,7 +123,7 @@ def test_hexagonal_dependencies_and_single_dynamic_boundary() -> None:
 
 
 def test_checks_match_immutable_historical_migrations() -> None:
-    """Compara expresiones legibles con los CHECK de 002–008, sin duplicar reglas."""
+    """Compara los CHECK con la cadena histórica y su sucesora de imágenes."""
     expected = {}
     for path in sorted((BACKEND / "alembic/versions").glob("*.py")):
         upgrade = next(
@@ -158,7 +158,7 @@ async def factory(
     """
     url = os.environ.get("ORM_TEST_DATABASE_URL")
     if not url:
-        pytest.skip("Requiere ORM_TEST_DATABASE_URL aislada migrada hasta 008")
+        pytest.skip("Requiere ORM_TEST_DATABASE_URL aislada en 1b2b_card_image_integrity")
     MigrationSettings(_env_file=None, MIGRATION_DATABASE_URL=url)
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("MONGO_URL", "mongodb://localhost:27017")
@@ -173,7 +173,7 @@ async def factory(
             database = await conn.scalar(text("SELECT current_database()"))
             assert database.startswith("pokearena_alembic_")
             revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-            assert revision == "008_flex_card_img_dims"
+            assert revision == "1b2b_card_image_integrity"
             assert not await conn.scalar(text(
                 "SELECT rolsuper FROM pg_roles WHERE rolname=current_user"
             ))
@@ -291,7 +291,7 @@ async def test_repository_reads_writes_and_relationships(factory: SessionFactory
             now = datetime.now(UTC)
             imagen = ImagenORM(
                 id=str(uuid4()), original_storage_key="isolated/original", original_sha256="a"*64,
-                image_format="PNG", byte_size=1, width=300, height=420,
+                image_format="PNG", byte_size=1, width=600, height=840,
                 created_at=now, updated_at=now,
             )
             session.add(imagen)
@@ -574,22 +574,33 @@ async def test_shared_models_constraints_and_json_null(factory: SessionFactory) 
             await session.rollback()
 
 
+READY_THUMBNAIL = {
+    "state": "READY", "thumbnail_storage_key": "isolated/thumbnail", "thumbnail_format": "WEBP",
+    "thumbnail_byte_size": 1, "thumbnail_width": 200, "thumbnail_height": 280,
+}
+
+
 @pytest.mark.parametrize("changes,constraint", [
-    ({"width": 299}, "ck_catalog_card_images_aspect"),
-    ({"width": 600, "height": 420}, "ck_catalog_card_images_aspect"),
+    ({"width": 300, "height": 420}, "ck_catalog_card_images_aspect"),
+    ({"width": 601}, "ck_catalog_card_images_aspect"),
     ({"byte_size": 5000001}, "ck_catalog_card_images_byte_size_limit"),
     ({"original_sha256": "invalid"}, "ck_catalog_card_images_sha256"),
     ({"image_format": "GIF"}, "ck_catalog_card_images_format"),
     ({"state": "READY"}, "ck_catalog_card_images_ready_thumbnail"),
+    *[
+        (READY_THUMBNAIL | {field: None}, "ck_catalog_card_images_ready_thumbnail")
+        for field in ("thumbnail_byte_size", "thumbnail_width", "thumbnail_height")
+    ],
+    (READY_THUMBNAIL | {"thumbnail_width": 201}, "ck_catalog_card_images_ready_thumbnail"),
 ])
 async def test_image_metadata_constraints(
     factory: SessionFactory, changes: dict[str, Any], constraint: str,
 ) -> None:
-    """008 permanece flexible; el ORM no anticipa el futuro requisito 600x840."""
+    """Rechaza originales antes tolerados y metadatos fuera del contrato."""
     now = datetime.now(UTC)
     values = dict(
         id=str(uuid4()), original_storage_key="isolated/original", original_sha256="a"*64,
-        image_format="PNG", byte_size=1, width=300, height=420,
+        image_format="PNG", byte_size=1, width=600, height=840,
         created_at=now, updated_at=now,
     )
     async with factory() as session:
@@ -598,6 +609,34 @@ async def test_image_metadata_constraints(
                 session.add(ImagenORM(**(values | changes)))
                 await session.flush()
         assert constraint_name(exc.value) == constraint
+
+
+@pytest.mark.parametrize("width,height", [(600, 840), (1533916890, 2147483646)])
+async def test_valid_ready_image_metadata(factory: SessionFactory, width: int, height: int) -> None:
+    """Accept a complete READY thumbnail and evaluate ratio without integer overflow."""
+    now = datetime.now(UTC)
+    async with factory() as session, session.begin():
+        session.add(ImagenORM(
+            id=str(uuid4()), original_storage_key="isolated/original", original_sha256="a" * 64,
+            image_format="WEBP", byte_size=5000000, width=width, height=height,
+            created_at=now, updated_at=now, **READY_THUMBNAIL,
+        ))
+        await session.flush()
+        await session.rollback()
+
+
+async def test_counter_capacity_preserves_value_on_overflow(factory: SessionFactory) -> None:
+    """The last assignable number is valid and the next one violates the CHECK."""
+    async with factory() as session, session.begin():
+        counter = update(ContadorORM).where(ContadorORM.card_type == "FUE")
+        await session.execute(counter.values(last_value=999))
+        repo = catalogo.crear_repositorio_cartas(session)
+        with pytest.raises(DBAPIError) as exc:
+            async with session.begin_nested():
+                await session.execute(counter.values(last_value=1000))
+        assert constraint_name(exc.value) == "ck_card_code_counter_range"
+        assert await repo.bloquear_contador("FUE") == 999
+        await session.rollback()
 
 
 async def test_unique_image_reference_and_ability_constraints(factory: SessionFactory) -> None:
@@ -609,7 +648,7 @@ async def test_unique_image_reference_and_ability_constraints(factory: SessionFa
             session.add(ImagenORM(
                 id=image_id, original_storage_key="isolated/original",
                 original_sha256="a"*64, image_format="PNG", byte_size=1,
-                width=300, height=420, created_at=now, updated_at=now,
+                width=600, height=840, created_at=now, updated_at=now,
             ))
             await session.flush()
             repo = catalogo.crear_repositorio_cartas(session)

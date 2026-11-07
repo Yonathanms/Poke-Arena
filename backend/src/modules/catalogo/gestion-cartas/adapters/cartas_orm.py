@@ -1,7 +1,7 @@
-"""Mapeos del catálogo en 008: persistencia, sin reglas de negocio ni DDL.
+"""Mapeos del catálogo en 1B.2B: persistencia, sin reglas de negocio ni DDL.
 
-Los CHECK reflejan el SQL histórico, incluidas dimensiones flexibles y semántica
-NULL. Las relaciones requieren carga explícita para evitar I/O asíncrono implícito.
+Los CHECK reflejan el esquema objetivo. Las relaciones requieren carga explícita
+para evitar I/O asíncrono implícito.
 """
 
 from datetime import datetime
@@ -88,13 +88,16 @@ class ImagenCartaORM(Base):
         CheckConstraint("byte_size <= 5000000", name="ck_catalog_card_images_byte_size_limit"),
         CheckConstraint("width > 0 AND height > 0", name="ck_catalog_card_images_dimensions"),
         CheckConstraint(
-            "width >= 300 AND height >= 420 AND width * 28 >= height * 19 "
-            "AND width * 28 <= height * 21", name="ck_catalog_card_images_aspect",
+            "width >= 600 AND height >= 840 "
+            "AND CAST(width AS bigint) * 7 = CAST(height AS bigint) * 5",
+            name="ck_catalog_card_images_aspect",
         ),
         CheckConstraint(
             "state <> 'READY' OR (thumbnail_storage_key IS NOT NULL "
-            "AND thumbnail_format IS NOT NULL AND thumbnail_byte_size > 0 "
-            "AND thumbnail_width = 200 AND thumbnail_height = 280)",
+            "AND thumbnail_format IS NOT NULL AND thumbnail_byte_size IS NOT NULL "
+            "AND thumbnail_byte_size > 0 AND thumbnail_width IS NOT NULL "
+            "AND thumbnail_height IS NOT NULL AND thumbnail_width = 200 "
+            "AND thumbnail_height = 280)",
             name="ck_catalog_card_images_ready_thumbnail",
         ),
         Index("ix_catalog_card_images_work", "state", "next_attempt_at", "lease_expires_at"),

@@ -4,19 +4,18 @@ import asyncio
 import hashlib
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 from typing import Any
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
-from src.shared.config import MigrationSettings, REPOSITORY_ROOT
+from src.shared.config import REPOSITORY_ROOT, MigrationSettings
 from tests.alembic_support import snapshot_schema
 
 BACKEND = REPOSITORY_ROOT / "backend"
@@ -36,11 +35,13 @@ def test_chain_has_one_base_one_head_and_no_duplicate_revisions() -> None:
     """Valida orden, unicidad y exclusión de 009 sin conectarse a ningún motor."""
     script = ScriptDirectory.from_config(Config(str(BACKEND / "alembic.ini")))
     revisions = list(reversed(list(script.walk_revisions())))
-    expected = MANIFEST["migrations"]
-    assert len({r.revision for r in revisions}) == len(revisions) == 8
+    expected = [*MANIFEST["migrations"], {
+        "revision": "1b2b_card_image_integrity", "down_revision": "008_flex_card_img_dims",
+    }]
+    assert len({r.revision for r in revisions}) == len(revisions) == len(expected)
     assert [r.revision for r in revisions] == [e["revision"] for e in expected]
     assert [r.down_revision for r in revisions] == [e["down_revision"] for e in expected]
-    assert script.get_heads() == ["008_flex_card_img_dims"]
+    assert script.get_heads() == ["1b2b_card_image_integrity"]
     assert script.get_bases() == ["001_initial_schema"]
     assert not list((BACKEND / "alembic/versions").glob("009*.py"))
 
