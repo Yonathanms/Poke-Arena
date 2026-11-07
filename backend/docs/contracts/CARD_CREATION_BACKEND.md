@@ -4,13 +4,13 @@
 
 **Fecha:** 2026-11-06
 
-**Estado:** 1A cerrada; Entrega 1B.1 autorizada y validada: originales 001–008 recuperados y reproducibles en aislamiento. 1B.2 y etapas posteriores no autorizadas.
+**Estado:** 1A y 1B.1 cerradas. Autorizada exclusivamente 1B.2A: ORM/persistencia del esquema 008 y pruebas aisladas, sin cambiar PostgreSQL original. 1B.2B y etapas posteriores pendientes.
 
 **Historia de usuario:** 2.1.1 — Crear carta
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: exclusivamente Entrega 1B.1.** Recuperar originales hasta 008, ajustar configuración de mantenimiento y validar esquemas en instancia nueva aislada. No cambiar tablas/datos/roles/volúmenes existentes ni reiniciar servicios originales; no recuperar/aplicar 009, crear sucesoras/modelos ni avanzar a 1B.2. La autorización posterior de 1B.1 sustituye la restricción previa de recuperación pendiente sin reabrir operaciones de 1A.
+> **Alcance vigente: exclusivamente Entrega 1B.2A.** Representar las seis tablas existentes y preparar persistencia asíncrona, sin implementar Crear carta completo. Reproducir 001–008 únicamente en nuevas bases aisladas para pruebas. No cambiar fuentes, sucesoras, permisos, endpoints, GridFS ni workers. Importlib aprobado exclusivamente en composición con imports relativos internos; sin renombrar carpetas ni modificar `sys.path`.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -80,7 +80,7 @@
 - **Habilidades:** reutilizar `catalog_abilities` y verificar el seed existente `HAB-000`; no recrearlos en 1B. La estructura oficial todavía NO muestra `gestion-habilidades`; no crear ese directorio unilateralmente ni colocar lógica completa de creación de habilidades en `gestion-cartas`. Para esta historia, acceder a una habilidad existente por código a través de un puerto de consulta.
 - **No renombrar ni desplazar módulos oficiales**, no crear `backend/app/`, `backend/scripts/`, `backend/infra/` ni otros árboles alternativos por copiar ejemplos anteriores.
 
-**Advertencia de importación:** los directorios `gestion-cartas`, `gestion-ubicaciones`, `gestion-sesiones`, `motor-juego` y otros nombres con guiones provienen del árbol oficial, pero no son identificadores válidos para importaciones normales `from ... import ...` en Python. No inventar imports inválidos, no agregar modificaciones globales de `sys.path` ni renombrar a escondidas. Antes de conectar Alembic/ejecutar código que los importe, documentar una estrategia consistente y solicitar aprobación para el ajuste mínimo de nombres (preferiblemente `snake_case`) o para un mecanismo de carga explícito aprobado. Esta decisión no impide la fase documental; debe resolverse antes de ejecutar módulos que requieran esas importaciones.
+**Advertencia de importación:** los directorios `gestion-cartas`, `gestion-ubicaciones`, `gestion-sesiones`, `motor-juego` y otros nombres con guiones provienen del árbol oficial, pero no son identificadores válidos para importaciones normales `from ... import ...` en Python. No inventar imports inválidos, no agregar modificaciones globales de `sys.path` ni renombrar a escondidas. En 1B.2A el usuario aprobó `importlib.import_module()` centralizado en `catalogo_module.py`, imports relativos internos y pruebas de composición/registro; no hay carga dinámica en dominio, puertos, servicios ni repositorios. Se conserva la estructura. Motivo, límites de análisis estático y separación ORM/dominio en [ORM_PERSISTENCE_1B2A.md](ORM_PERSISTENCE_1B2A.md). Alembic sigue sin importar estos modelos: metadata de seis tablas incompleta para todo el esquema.
 
 ### 2.2 Clean Code, documentación, seguridad y mantenibilidad
 
@@ -309,7 +309,7 @@ Las referencias `original_storage_key` y `thumbnail_storage_key` deberán resolv
 - `4843809` (2026-11-05), incluido en HEAD auditado `988a567`, eliminó del árbol las revisiones 001–009 y la implementación anterior. En la auditoría previa los archivos seguían recuperables en Git y `versions/` contenía solamente `.gitkeep`; 1B.1 recuperó ahora 001–008 sin modificaciones.
 - La base registra 008 y su esquema observado coincide con los cambios relevantes inspeccionados. No se conoce el ejecutor original. En 1B.1 se verificó la reproducción completa hasta 008 en bases aisladas y su correspondencia estructural con la fuente.
 
-**Condición histórica satisfecha en 1B.1:** archivos recuperados, dependencias revisadas, cadena reproducida en bases aisladas y esquema contrastado con 008. Evaluar 009 por separado sin aplicarla automáticamente ni alterar ubicaciones. Solo con autorización posterior de 1B.2 se podrán evaluar ajustes o sucesoras sobre tablas existentes. No modificar revisiones ya aplicadas ni inventar una inicial sustituta. No usar `stamp head` para ocultar divergencias ni `autogenerate` con metadata vacía/incompleta.
+**Condición histórica satisfecha en 1B.1:** archivos recuperados, dependencias revisadas, cadena reproducida en bases aisladas y esquema contrastado con 008. Evaluar 009 por separado sin aplicarla automáticamente ni alterar ubicaciones. Solo con autorización posterior de 1B.2B se podrán evaluar ajustes o sucesoras sobre tablas existentes. No modificar revisiones ya aplicadas ni inventar una inicial sustituta. No usar `stamp head` para ocultar divergencias ni `autogenerate` con metadata vacía/incompleta.
 
 Los inicializadores de motores pueden administrar usuarios/bases, pero no duplicar DDL de Alembic. Respaldar y comprobar restauración antes de aplicar cambios autorizados sobre datos conservados.
 
@@ -416,7 +416,7 @@ Reconstrucciones independientes desde raíz y backend hasta 008: 12 tablas, 103 
 
 ## 7. Fases y criterios de aceptación
 
-La autorización vigente cubre solo 1B.1; D y 1A están completadas. La recuperación histórica antes denominada fase 0 se ejecutó como 1B.1 en aislamiento. No avanzar automáticamente a 1B.2 ni crear sucesoras.
+La autorización vigente cubre solo 1B.2A; D, 1A y 1B.1 están completadas. No avanzar a 1B.2B ni crear sucesoras.
 
 ### D — Actualización documental (completada)
 
@@ -437,7 +437,14 @@ La autorización vigente cubre solo 1B.1; D y 1A están completadas. La recupera
 - **Aceptar solo con** configuración validada, correspondencia explícita de volúmenes, conexión/healthchecks adecuados, permisos mínimos y persistencia/restauración verificadas bajo escenario autorizado.
 - No crear tablas, endpoints, conexiones duplicadas ni procesos nuevos; no tocar frontend o worker.
 
-### 1B.2 — Compatibilidad SQL (pendiente de autorización posterior a 1B.1)
+### 1B.2A — ORM y persistencia (autorizada)
+
+- Seis modelos ORM en adaptadores de catálogo y propietarios compartidos, dominio puro, puertos, repositorio SQL asíncrono y composición centralizada. No implementar todavía servicios/controladores.
+- Reutilizar conexión/fábrica oficiales. El llamador abre un `BEGIN` explícito y controla su cierre. El repositorio rechaza `AUTOBEGIN` y hace flush sin commit, rollback ni cierre. Los errores técnicos sanitizados podrán traducirse al dominio más adelante.
+- Verificar esquema real, relaciones, restricciones, sesiones, transacciones y ausencia de duplicados en pruebas aisladas preparadas con originales 001–008.
+- Metadata parcial: no habilitar autogenerate, DDL ORM ni cambios de esquema. Informe y pruebas en [ORM_PERSISTENCE_1B2A.md](ORM_PERSISTENCE_1B2A.md).
+
+### 1B.2B — Compatibilidad SQL/sucesoras (pendiente de autorización)
 
 - Proponer ajustes mínimos exclusivamente sobre tablas existentes y responsabilidades aprobadas; sin PK BIGINT, nombres nuevos paralelos ni reinicio de contadores.
 - La propuesta debe resolver únicamente pendientes autorizados, incluyendo discrepancia de imágenes si corresponde, con evaluación de datos y conservación histórica.
@@ -480,9 +487,9 @@ Las decisiones de §1.2 están aprobadas. Los siguientes detalles **no** lo est�
 
 | Pendiente | Condición previa / límite |
 |---|---|
-| Sucesoras después de 1B.1 | Historial reproducido y comparado; cualquier ajuste requiere nueva autorización de 1B.2. No aplicar 009 por estar en Git. |
-| Imports con guiones | Estrategia documentada y aprobada; sin renombrar directorios ni modificar `sys.path` unilateralmente. |
-| Discrepancia ORM en notas oficiales | Mantener regla de dominio puro y mapeos en adaptadores de AGENTS/contrato; reconciliar la descripción antigua antes de implementar, preservando topología modular. |
+| Sucesoras después de 1B.1 | Historial reproducido y comparado; cualquier ajuste SQL requiere nueva autorización de 1B.2B. No aplicar 009 por estar en Git. |
+| Imports con guiones | Aprobado en 1B.2A: importlib solo en composición, imports relativos internos, sin renombrar ni modificar sys.path; probar composición/registro y documentar límites. |
+| Discrepancia ORM en notas oficiales | Resuelta en 1B.2A por autorización explícita: dominio puro y mapeos en adaptadores; anotaciones documentales corregidas, topología preservada. |
 | Referencias SQL/GridFS | Resolver formato de storage keys, tipo de ID GridFS, base/bucket y compatibilidad con almacenamiento previo; no duplicar metadatos. |
 | Procesamiento y recuperación | Elegir síncrono/asíncrono, reintentos, reconciliación, compensación y respuesta HTTP, considerando mecanismos históricos. No activar procesos ahora. |
 | Publicación y proyección | Precisar actualización versionada y tratamiento de fallos para impedir exposición de imágenes incompletas. Conservar la proyección actual. |
@@ -503,7 +510,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** 1B.1 completada y validada en aislamiento; detenerse antes de 1B.2. La recuperación no autoriza cambiar bases existentes, crear sucesoras, ampliar permisos o activar procesos. 1B.2, 1C, 2 y 3 requieren autorización independiente.
+**Autorización vigente:** exclusivamente 1B.2A, ORM/persistencia sin cambiar esquema ni datos originales. Detenerse antes de 1B.2B. No crear sucesoras, ampliar permisos o activar procesos. 1B.2B, 1C, 2 y 3 requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

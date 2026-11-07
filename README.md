@@ -135,7 +135,7 @@ Poke-Arena/
 > Cada submódulo (ejemplo: `catalogo/gestion-cartas`) contiene 5 carpetas de arquitectura hexagonal:
 > 1. `controllers/`: Endpoints HTTP y validación con Pydantic DTOs.
 > 2. `services/`: Reglas del negocio y casos de uso.
-> 3. `domain/`: Modelos de la base de datos (tablas).
+> 3. `domain/`: Entidades y reglas puras, sin ORM; mapeos SQL en `adapters/`.
 > 4. `ports/`: Interfaces abstractas (contratos).
 > 5. `adapters/`: Repositorios concretos de PostgreSQL o MongoDB y adaptadores externos.
 
@@ -269,3 +269,41 @@ backend/.venv/bin/python -m pytest -c backend/pyproject.toml backend/tests/test_
 La integración requiere dos URLs privadas `ALEMBIC_TEST_URL_A/B` hacia bases nuevas vacías de una instancia aislada; sin ellas se omite esa prueba y se informa. En la validación real pasaron las **24 pruebas**, incluida integración. No se limpia una base existente para repetir: crear destinos aislados nuevos. La instancia `pokearena-1b1-alembic-20261106` queda detenida, con volumen/red propios conservados; el puerto aleatorio publicado puede cambiar al iniciarla y las URLs de prueba deben releerse de Docker.
 
 Procedencia, revisiones, comandos de reconstrucción, comparación y límites en [el informe 1B.1](backend/docs/contracts/ALEMBIC_RECOVERY_1B1.md). No se ejecutó Alembic sobre `pokearena_db`, ni stamp, downgrade, generación automática o migraciones sucesoras. No avanzar a 1B.2 sin autorización.
+
+## Entrega 1B.2A — ORM y persistencia sin cambios de esquema
+
+Se representan las seis tablas existentes con SQLAlchemy en los adaptadores y
+propietarios compartidos. El dominio permanece puro; el repositorio usa la sesión
+oficial y exige transacción del llamador. `catalogo_module.py` concentra la carga
+aprobada con importlib para conservar las carpetas con guiones; no modifica
+`sys.path` ni registra endpoints. Idempotencia y Outbox tienen un solo propietario.
+La metadata es parcial: Alembic mantiene autogenerate bloqueado y no se cambió
+ninguna revisión histórica ni el esquema original.
+
+```bash
+# Desde raíz, sin motores ni secretos privados (integraciones opt-in omitidas):
+backend/.venv/bin/python -m pytest -c backend/pyproject.toml backend/tests -q
+```
+
+Para integración se requieren tres bases nuevas de una instancia PostgreSQL 16
+separada: dos vacías mediante `ALEMBIC_TEST_URL_A/B` y otra ya reconstruida con
+001–008 mediante `ORM_TEST_DATABASE_URL`. Todas usan nombres `pokearena_alembic_*`
+y rol separado no administrativo. Pasar URLs por entorno privado; nunca utilizar
+las bases originales ni publicar credenciales. La suite no crea/limpia bases ni
+restablece contadores; la prueba de commit conserva una fila sintética, por lo
+que para repetir la ejecución completa se preparan nuevos destinos.
+
+Validación real: **58 pruebas aprobadas, sin omisiones**; comparación ORM/SQL sin
+diferencias y huellas de las cuatro bases originales intactas. Sin URLs opt-in:
+27 aprobadas y 31 omitidas explícitamente. La instancia de pruebas queda detenida,
+con recursos aislados conservados. No se añadieron dependencias; Ruff/Mypy siguen
+sin estar instalados. Archivos, contratos, decisión de imports y sus limitaciones,
+comandos y evidencia en [el informe 1B.2A](backend/docs/contracts/ORM_PERSISTENCE_1B2A.md).
+No se implementó el flujo completo de Crear carta ni se avanzó a 1B.2B.
+
+La corrección del Code Review usa `python manage.py lint` para revisar los módulos
+por su nombre completo con la configuración de `backend/pyproject.toml`. Para
+validar la persistencia sin ejecutar migraciones, define solo
+`ORM_TEST_DATABASE_URL` hacia una copia aislada ya en la revisión 008. La suite
+de corrección obtuvo **84 aprobadas y una omitida** en PostgreSQL 16. La omisión
+corresponde a la reconstrucción histórica de Alembic.

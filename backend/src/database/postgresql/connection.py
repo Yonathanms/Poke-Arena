@@ -1,6 +1,7 @@
 """Configuración de conexión hacia la base de datos relacional PostgreSQL 16."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy.ext.asyncio import (
@@ -8,19 +9,13 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from src.shared.config import get_settings
 
+from .base import Base as Base
+
 settings = get_settings()
-
-
-class Base(DeclarativeBase):
-    """Clase base declarativa de SQLAlchemy 2.0 para todos los modelos ORM."""
-
-    pass
-
 
 pool_kwargs: dict[str, Any] = (
     {"poolclass": NullPool}
@@ -63,3 +58,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 # Alias para compatibilidad
 get_write_db = get_db
+
+
+@asynccontextmanager
+async def transactional_session(
+    factory: async_sessionmaker[AsyncSession] | None = None,
+) -> AsyncIterator[AsyncSession]:
+    """Abre/cierra sesión y transacción: commit al salir, rollback ante fallo.
+
+    Usa la fábrica oficial por defecto. La inyección permite pruebas aisladas.
+    No anidar sobre get_db: para sesiones ya inyectadas usar session.begin().
+    """
+    session_factory = factory if factory is not None else AsyncSessionLocal
+    async with session_factory() as session, session.begin():
+        yield session

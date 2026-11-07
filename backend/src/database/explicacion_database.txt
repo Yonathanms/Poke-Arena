@@ -33,7 +33,7 @@ los dos motores de base de datos que corren en Docker:
 Siguiendo la arquitectura modular limpia:
 - Las tablas y modelos NO se meten aquí en database/.
 - Cada módulo es dueño de sus datos:
-  * Tablas de Cartas -> src/modules/catalogo/gestion-cartas/domain/carta_model.py
+  * Tablas de Cartas -> src/modules/catalogo/gestion-cartas/adapters/cartas_orm.py
   * Consultas SQL    -> src/modules/catalogo/gestion-cartas/adapters/sql_carta_repository.py
   * Búsquedas Mongo  -> src/modules/catalogo/gestion-cartas/adapters/mongo_carta_repository.py
 
@@ -45,3 +45,7 @@ Siguiendo la arquitectura modular limpia:
 - outbox_worker.py: Sincroniza de PostgreSQL a MongoDB sin pérdida de datos.
 ==============================================================================
 
+
+Aclaración 1B.2A: base.py es solo el registro declarativo compartido, sin tablas,
+engine ni DDL. connection.py conserva el único engine y fábrica oficiales.
+El dominio permanece puro; shared es dueño único de idempotencia y Outbox.
