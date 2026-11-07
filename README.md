@@ -365,3 +365,15 @@ Configurar las URLs privadas de la copia PostgreSQL y MongoDB antes de
 ejecutarlo. El worker exige el índice UNIQUE de código en `cards_projection`.
 El [informe 1F](backend/docs/contracts/CARD_CREATION_OUTBOX_1F.md) reúne los
 parámetros, permisos, consultas y procedimiento de reconciliación.
+
+## Entrega 1G — Backend Crear Carta integrado
+
+El flujo aislado usa un administrador local aprovisionado explícitamente y
+una sesión opaca revocable. La revisión `1g_local_master_admin` añade
+identidad LOCAL sin cambiar las tablas de catálogo. El login local queda
+desactivado por defecto mediante `IDENTITY_LOCAL_ENABLED=false`.
+
+Consulta el [ensayo desde cero y plan de despliegue](backend/docs/contracts/CARD_CREATION_FINAL_1G.md)
+y el [contrato HTTP para React](backend/docs/contracts/CARD_CREATION_FRONTEND_HANDOFF.md).
+Google real, el despliegue original y el desarrollo frontend requieren
+autorizaciones separadas.

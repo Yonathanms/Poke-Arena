@@ -4,8 +4,9 @@ from functools import lru_cache
 from pathlib import Path
 from re import fullmatch
 from typing import Any
+from urllib.parse import urlsplit
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -58,6 +59,7 @@ class Settings(EnvironmentSettings):
     MAX_IMAGE_SIZE_MB: int = 5
 
     # Identidad / OAuth
+    IDENTITY_LOCAL_ENABLED: bool = False
     GOOGLE_OAUTH_CLIENT_ID: str | None = None
     PLATFORM_ADMIN_GOOGLE_SUBJECTS: str = ""
     IDENTITY_ACCESS_TOKEN_TTL_SECONDS: int = Field(default=900, ge=60, le=86_400)
@@ -66,6 +68,20 @@ class Settings(EnvironmentSettings):
     ALLOWED_ORIGINS: str = (
         "http://localhost:5173,http://localhost:3000,http://localhost:80,http://localhost"
     )
+
+    @model_validator(mode="after")
+    def validate_local_identity(self) -> "Settings":
+        """El login local requiere opt-in y una base de validación en loopback."""
+        if self.IDENTITY_LOCAL_ENABLED:
+            sql = urlsplit(self.DATABASE_URL)
+            if (
+                self.ENVIRONMENT not in {"development", "test"}
+                or sql.hostname not in {"127.0.0.1", "localhost", "::1"}
+                or not sql.path.startswith("/pokearena_alembic_")
+                or sql.query
+            ):
+                raise ValueError("La identidad local requiere un destino PostgreSQL aislado")
+        return self
 
     @field_validator("MONGO_GRIDFS_BUCKET")
     @classmethod

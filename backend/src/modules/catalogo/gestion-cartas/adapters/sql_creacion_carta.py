@@ -10,6 +10,7 @@ from sqlalchemy import ColumnElement, or_, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
+from src.database.postgresql.revisiones import REVISIONES_CARTAS
 from src.shared.idempotencia.models import IdempotencyRecordORM
 from src.shared.outbox import OutboxEventORM
 
@@ -33,7 +34,6 @@ from ..ports.creacion_ports import (
 from .cartas_orm import CartaORM, ImagenCartaORM
 from .sql_carta_repository import SqlCartaRepository
 
-REVISION = "1b2b_card_image_integrity"
 ESTADOS_RESERVA = ("PENDING", "RETRY_PENDING")
 
 
@@ -337,7 +337,7 @@ class SqlCoordinacionCreacion:
                             raise _fallo_sql()
                         if (
                             await conn.scalar(text("SELECT version_num FROM alembic_version"))
-                            != REVISION
+                            not in REVISIONES_CARTAS
                         ):
                             raise _fallo_sql()
                         pid = await conn.scalar(text("SELECT pg_backend_pid()"))

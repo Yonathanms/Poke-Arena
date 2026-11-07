@@ -37,11 +37,13 @@ def test_chain_has_one_base_one_head_and_no_duplicate_revisions() -> None:
     revisions = list(reversed(list(script.walk_revisions())))
     expected = [*MANIFEST["migrations"], {
         "revision": "1b2b_card_image_integrity", "down_revision": "008_flex_card_img_dims",
+    }, {
+        "revision": "1g_local_master_admin", "down_revision": "1b2b_card_image_integrity",
     }]
     assert len({r.revision for r in revisions}) == len(revisions) == len(expected)
     assert [r.revision for r in revisions] == [e["revision"] for e in expected]
     assert [r.down_revision for r in revisions] == [e["down_revision"] for e in expected]
-    assert script.get_heads() == ["1b2b_card_image_integrity"]
+    assert script.get_heads() == ["1g_local_master_admin"]
     assert script.get_bases() == ["001_initial_schema"]
     assert not list((BACKEND / "alembic/versions").glob("009*.py"))
 

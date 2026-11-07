@@ -10,7 +10,7 @@
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: Entrega 1F en aislamiento.** El worker independiente consume CardCreated y mantiene `cards_projection`. El despliegue sobre los servicios originales y 1G requieren autorización independiente.
+> **Alcance vigente: Entrega 1G en aislamiento.** La creación HTTP, el administrador local y el worker están integrados. Google real, los servicios originales y el frontend requieren autorización independiente.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -465,6 +465,10 @@ El servicio compuesto en `catalogo_module.py` reutiliza la idempotencia y el Out
 
 Crear Carta usa `POST /api/v1/content/cards` con sesión de plataforma y rol administrativo. Se conserva 1D y se verifica OIDC localmente con firmas RSA. La validación con Google real y el despliegue original siguen pendientes. Véase [el informe 1E](CARD_CREATION_API_1E.md). La publicación por proyección requiere autorización independiente.
 
+### 1G — Cierre de Crear Carta en aislamiento
+
+La revisión `1g_local_master_admin` permite aprovisionar un único administrador LOCAL y conserva el esquema de catálogo. FastAPI expone el login local, revocación y lectura administrativa de habilidades. La operación, imágenes y proyección mantienen los contratos de 1C–1F. Véase [el informe 1G](CARD_CREATION_FINAL_1G.md) y [el contrato para React](CARD_CREATION_FRONTEND_HANDOFF.md).
+
 ### 3 — Integración full stack (pendiente de autorización)
 
 Integrar `frontend/src/web-admin/modules/catalogo/` reutilizando componentes, hook y servicio existentes. No crear otro frontend. Mantener fuera de fases 0–1C `gestion-ubicaciones`, `identidad`, `motor-juego`, `torneos` y frontend, salvo alcance adicional explícito.
@@ -514,7 +518,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** exclusivamente 1F en aislamiento. La aplicación a las bases originales y 1G requieren autorización independiente.
+**Autorización vigente:** exclusivamente 1G en aislamiento. El despliegue original y el frontend requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

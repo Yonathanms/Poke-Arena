@@ -14,6 +14,7 @@ from src.shared.validacion.cuerpo import CuerpoExcesivo, flujo_acotado
 
 from ..domain.carta_model import DatosCarta
 from ..domain.imagen_model import MAX_IMAGE_BYTES
+from ..ports.cartas_ports import ErrorPersistencia
 from ..services.cartas_service import (
     ActorCreacion,
     CrearCarta,
@@ -21,7 +22,7 @@ from ..services.cartas_service import (
     SolicitudCrearCarta,
     TipoErrorCreacion,
 )
-from .cartas_dtos import CamposCrearCarta, CartaCreada, esquema_multipart
+from .cartas_dtos import CamposCrearCarta, CartaCreada, HabilidadSeleccionable, esquema_multipart
 
 _LIMITE_MULTIPART = MAX_IMAGE_BYTES + 16_384
 _PATRON_CLAVE = r"^[!-+\x2D-~]{1,128}$"  # ASCII visible, sin coma (headers combinados).
@@ -129,9 +130,31 @@ async def _leer_solicitud(request: Request, clave: str) -> SolicitudCrearCarta:
 def crear_router(
     administrador: Callable[..., Awaitable[str]],
     servicio: Callable[[], CrearCarta],
+    habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
 ) -> APIRouter:
     """Registra la creación con autorización obligatoria y composición diferida."""
     router = APIRouter(prefix="/content", tags=["Content Cards"])
+
+    @router.get(
+        "/abilities",
+        operation_id="listCardAbilities",
+        responses=respuestas_documentadas(
+            {
+                401: "Sesión requerida",
+                403: "Rol insuficiente",
+                503: "Catálogo no disponible",
+            }
+        ),
+    )
+    async def listar_habilidades(_: str = Depends(administrador)) -> list[HabilidadSeleccionable]:
+        """Devuelve solo las opciones necesarias para seleccionar una habilidad."""
+        try:
+            return [
+                HabilidadSeleccionable(code=codigo, name=nombre)
+                for codigo, nombre in await habilidades()
+            ]
+        except ErrorPersistencia:
+            raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
 
     @router.post(
         "/cards",

@@ -67,3 +67,10 @@ def esquema_multipart() -> dict[str, object]:
             }
         },
     }
+
+
+class HabilidadSeleccionable(BaseModel):
+    """Identificador y etiqueta de una habilidad existente para el formulario."""
+
+    code: str
+    name: str

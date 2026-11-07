@@ -40,9 +40,9 @@ def crear_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
-        expose_headers=["X-Correlation-ID"],
+        expose_headers=["X-Correlation-ID", "Retry-After"],
     )
     registrar_errores(app)
     app.include_router(identidad_module.router, prefix=settings.API_V1_PREFIX)

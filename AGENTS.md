@@ -1,7 +1,7 @@
 # AGENTS.md — Poké-Arena
 
 **Actualización documental:** 2026-11-07. Contrato complementario v1.3.
-**Fase autorizada actualmente:** Entrega 1F, consumo Outbox de Crear Carta y proyección MongoDB en aislamiento. 1E está validada en aislamiento. El entorno original, 1G y el frontend requieren autorización independiente.
+**Fase autorizada actualmente:** Entrega 1G, cierre del backend Crear Carta en aislamiento. La base original permanece en 008. El despliegue original, Google real y el frontend requieren autorización independiente.
 
 ## 1. Autoridad y alcance
 
@@ -95,7 +95,7 @@ Estas decisiones sustituyen las propuestas incompatibles de v1.2; son acuerdos d
 - **1D — Servicio Crear Carta (validado en aislamiento):** reserva durable, verificación GridFS y confirmación SQL de contador, imagen, carta, respuesta y Outbox. Véase `backend/docs/contracts/CARD_CREATION_SERVICE_1D.md`.
 - **1E — API (validada en aislamiento):** autenticación Google OIDC con claves locales de prueba, sesión opaca, autorización y adaptación HTTP de 1D. Véase `backend/docs/contracts/CARD_CREATION_API_1E.md`.
 - **1F — Outbox y proyección:** worker independiente de `CardCreated`, fencing SQL y proyección monotónica, solo en destinos aislados. Véase `backend/docs/contracts/CARD_CREATION_OUTBOX_1F.md`.
-- **1G — Integración final (pendiente):** cierre del backend y aprovisionamiento controlado del administrador maestro.
+- **1G — Integración final:** administrador local con sesión opaca, lectura de habilidades y validación de extremo a extremo. Véase `backend/docs/contracts/CARD_CREATION_FINAL_1G.md`. El despliegue original requiere autorización independiente.
 - **3 — Frontend/integración (pendiente):** integrar el frontend oficial solo con autorización separada.
 
 La autorización posterior de 1B.1 cubre la recuperación/verificación histórica exclusivamente en instancia aislada nueva. Las URLs de mantenimiento son explícitas, de rol separado y bases pokearena_alembic_*; no hay fallback a la API. No ejecutar Alembic sobre pokearena_db ni ampliar privilegios de poke_api_user. La autorización de 1B.2B cubre exclusivamente la sucesora en copias aisladas. En el cierre autorizado de 1A se retiraron los dos binds ausentes y se conservaron red y volúmenes. El primario mantiene identidad/configuración y no tenía réplicas activas ni slots; no tocar el volumen de réplica histórica. SQL usa permisos por tabla sin administración y Mongo rol local solo sobre cards_projection; ampliar permisos GridFS requiere decisión explícita del bucket y autorización. Véase estado y evidencia en README de raíz.

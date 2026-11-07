@@ -16,7 +16,13 @@ from src.shared.http_module import (
 )
 from src.shared.validacion.cuerpo import CuerpoExcesivo, flujo_acotado
 
-from ..domain.sesion_model import IdentidadInvalida, IdentidadNoDisponible, Rol
+from ..domain.sesion_model import (
+    IdentidadInvalida,
+    IdentidadLimitada,
+    IdentidadNoDisponible,
+    Rol,
+    SesionEmitida,
+)
 from ..services.sesiones_service import Sesiones
 
 
@@ -25,6 +31,14 @@ class CredencialGoogle(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     google_id_token: SecretStr = Field(min_length=1, max_length=8192)
+
+
+class CredencialLocal(BaseModel):
+    """Credencial del administrador local aprovisionado fuera de HTTP."""
+
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=1, max_length=63)
+    password: SecretStr = Field(min_length=1, max_length=256)
 
 
 class RespuestaSesion(BaseModel):
@@ -59,15 +73,70 @@ def crear_router(
         return principal.id
 
     @router.post(
+        "/local/session",
+        status_code=201,
+        operation_id="createLocalSession",
+        openapi_extra=_esquema_json(CredencialLocal),
+        responses=respuestas_documentadas(
+            {
+                401: "Credenciales inválidas",
+                404: "Login local deshabilitado",
+                413: "Cuerpo demasiado grande",
+                415: "Se requiere application/json",
+                422: "Solicitud inválida",
+                429: "Límite temporal de intentos",
+                503: "Identidad no disponible",
+            }
+        ),
+    )
+    async def crear_local(request: Request, response: Response) -> RespuestaSesion:
+        """Verifica un secreto aprovisionado y emite la sesión compartida."""
+        if not get_settings().IDENTITY_LOCAL_ENABLED:
+            raise problema(404, "http_error", "La ruta no está disponible.")
+        loopback = request.client is not None and request.client.host in {"127.0.0.1", "::1"}
+        if request.url.scheme != "https" and not loopback:
+            raise problema(404, "http_error", "La ruta no está disponible.")
+        credencial = await _leer_credencial(request, CredencialLocal)
+        try:
+            sesion = await servicio().emitir_local(
+                credencial.username, credencial.password.get_secret_value()
+            )
+        except IdentidadInvalida:
+            raise problema(401, "credencial_invalida", "Credenciales inválidas.") from None
+        except IdentidadLimitada as error:
+            raise problema(
+                429,
+                "intentos_limitados",
+                "Reintenta después del período de espera.",
+                {"Retry-After": str(error.segundos)},
+            ) from None
+        except IdentidadNoDisponible:
+            raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
+        except Exception:
+            raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
+        return _respuesta_sesion(sesion, response)
+
+    @router.delete(
+        "/session",
+        status_code=204,
+        operation_id="revokePlatformSession",
+        responses=respuestas_documentadas(
+            {401: "Bearer requerido", 503: "Identidad no disponible"}
+        ),
+    )
+    async def revocar_sesion(token: str = Depends(token_plataforma)) -> Response:
+        """Revoca el Bearer presentado sin afectar otras sesiones."""
+        try:
+            await servicio().revocar(token)
+        except IdentidadNoDisponible:
+            raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
+        return Response(status_code=204)
+
+    @router.post(
         "/google/session",
         status_code=201,
         operation_id="createGoogleSession",
-        openapi_extra={
-            "requestBody": {
-                "required": True,
-                "content": {"application/json": {"schema": CredencialGoogle.model_json_schema()}},
-            }
-        },
+        openapi_extra=_esquema_json(CredencialGoogle),
         responses=respuestas_documentadas(
             {
                 401: "ID token inválido",
@@ -81,7 +150,7 @@ def crear_router(
     )
     async def crear_sesion(request: Request, response: Response) -> RespuestaSesion:
         """Intercambia un ID token verificado por una sesión opaca de Poké-Arena."""
-        credencial = await _leer_credencial(request)
+        credencial = await _leer_credencial(request, CredencialGoogle)
         try:
             subject = await verificar(
                 credencial.google_id_token.get_secret_value(), get_settings().GOOGLE_OAUTH_CLIENT_ID
@@ -97,19 +166,34 @@ def crear_router(
             raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
         except Exception:
             raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
-        response.headers["Cache-Control"] = "no-store"
-        return RespuestaSesion(
-            access_token=sesion.token,
-            expires_in=sesion.expira_en,
-            user_id=sesion.principal.id,
-            role=sesion.principal.rol,
-        )
+        return _respuesta_sesion(sesion, response)
 
     return router, administrador
 
 
-async def _leer_credencial(request: Request) -> CredencialGoogle:
-    """Valida JSON de tamaño acotado antes de verificar el ID token."""
+def _respuesta_sesion(sesion: SesionEmitida, response: Response) -> RespuestaSesion:
+    response.headers["Cache-Control"] = "no-store"
+    return RespuestaSesion(
+        access_token=sesion.token,
+        expires_in=sesion.expira_en,
+        user_id=sesion.principal.id,
+        role=sesion.principal.rol,
+    )
+
+
+def _esquema_json(modelo: type[BaseModel]) -> dict[str, object]:
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": modelo.model_json_schema()}},
+        }
+    }
+
+
+async def _leer_credencial[Credencial: BaseModel](
+    request: Request, modelo: type[Credencial]
+) -> Credencial:
+    """Valida JSON de tamaño acotado sin registrar su contenido."""
     tipo = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if tipo != "application/json":
         raise problema(415, "json_requerido", "Usa application/json.")
@@ -117,7 +201,7 @@ async def _leer_credencial(request: Request) -> CredencialGoogle:
         cuerpo = bytearray()
         async for fragmento in flujo_acotado(request, 16_384):
             cuerpo.extend(fragmento)
-        return CredencialGoogle.model_validate_json(cuerpo)
+        return modelo.model_validate_json(cuerpo)
     except CuerpoExcesivo:
         raise problema(413, "cuerpo_demasiado_grande", "El cuerpo supera el límite.") from None
     except (ValidationError, ClientDisconnect):

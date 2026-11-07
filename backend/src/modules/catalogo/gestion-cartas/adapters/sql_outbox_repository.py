@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.database.postgresql.revisiones import REVISIONES_CARTAS
 from src.shared.outbox import OutboxEventORM
 
 from ..domain.proyeccion_carta import (
@@ -117,8 +118,8 @@ class SqlOutboxCartas:
         ).one()
         if not base.startswith("pokearena_alembic_") or admin:
             raise ValueError("destino_postgresql_fuera_de_1f")
-        if await sesion.scalar(text("SELECT version_num FROM alembic_version")) != (
-            "1b2b_card_image_integrity"
+        if await sesion.scalar(text("SELECT version_num FROM alembic_version")) not in (
+            REVISIONES_CARTAS
         ):
             raise ValueError("revision_postgresql_fuera_de_1f")
 

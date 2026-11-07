@@ -29,3 +29,12 @@ class IdentidadNoDisponible(Exception):
 
 class IdentidadInvalida(Exception):
     """La credencial no acredita una identidad válida."""
+
+
+class IdentidadLimitada(Exception):
+    """Presupuesto temporal de intentos agotado o verificación simultánea."""
+
+    def __init__(self, segundos: int) -> None:
+        """Expone solo el tiempo de espera, sin identificar la cuenta."""
+        super().__init__()
+        self.segundos = segundos

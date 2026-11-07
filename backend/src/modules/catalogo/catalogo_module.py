@@ -79,7 +79,7 @@ def crear_servicio_crear_carta() -> Any:
 def router_cartas(administrador: Any) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
-    return modulo.crear_router(administrador, crear_servicio_crear_carta)
+    return modulo.crear_router(administrador, crear_servicio_crear_carta, listar_habilidades)
 
 
 def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
@@ -98,3 +98,14 @@ def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
         almacen,
         proyeccion_domain.OutboxTemporal,
     )
+
+
+
+async def listar_habilidades() -> list[tuple[str, str]]:
+    """Compone la lectura administrativa con el repositorio y la sesión oficiales."""
+    from src.database.postgresql.connection import transactional_session
+
+    async with transactional_session() as sesion:
+        repo = crear_repositorio_cartas(sesion)
+        filas = await repo.listar_habilidades()
+        return list(filas)

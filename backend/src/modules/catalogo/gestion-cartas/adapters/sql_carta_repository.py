@@ -167,3 +167,14 @@ class SqlCartaRepository(CartasRepositoryPort):
         except DBAPIError as error:
             raise _traducir_error(error) from None
         return tuple(ruta)
+
+    async def listar_habilidades(self) -> list[tuple[str, str]]:
+        """Lee códigos y nombres de habilidades existentes en orden de selección."""
+        self._exigir_transaccion()
+        try:
+            filas = await self._session.execute(
+                select(HabilidadORM.code, HabilidadORM.name).order_by(HabilidadORM.code)
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
+        return [(codigo, nombre) for codigo, nombre in filas.tuples()]
