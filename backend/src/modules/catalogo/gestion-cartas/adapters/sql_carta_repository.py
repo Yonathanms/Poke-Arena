@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import asdict
 
-from sqlalchemy import select
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import SessionTransactionOrigin
@@ -33,9 +33,17 @@ def _traducir_error(error: DBAPIError) -> ErrorPersistencia:
 def _a_carta(fila: CartaORM) -> Carta:
     """Separa estado escalar del ORM para no exportar entidades con sesión."""
     return Carta(
-        id=fila.id, code=fila.code, name=fila.name, cost=fila.cost, power=fila.power,
-        card_type=fila.card_type, rarity=fila.rarity, ability_id=fila.ability_id,
-        image_id=fila.image_id, version=fila.version, created_at=fila.created_at,
+        id=fila.id,
+        code=fila.code,
+        name=fila.name,
+        cost=fila.cost,
+        power=fila.power,
+        card_type=fila.card_type,
+        rarity=fila.rarity,
+        ability_id=fila.ability_id,
+        image_id=fila.image_id,
+        version=fila.version,
+        created_at=fila.created_at,
     )
 
 
@@ -94,9 +102,14 @@ class SqlCartaRepository(CartasRepositoryPort):
         if fila is None:
             return None
         return Habilidad(
-            id=fila.id, code=fila.code, name=fila.name, ability_type=fila.ability_type,
-            description=fila.description, params=deepcopy(fila.params),
-            has_effect=fila.has_effect, evolution_target_card_id=fila.evolution_target_card_id,
+            id=fila.id,
+            code=fila.code,
+            name=fila.name,
+            ability_type=fila.ability_type,
+            description=fila.description,
+            params=deepcopy(fila.params),
+            has_effect=fila.has_effect,
+            evolution_target_card_id=fila.evolution_target_card_id,
         )
 
     async def agregar(self, carta: Carta) -> None:
@@ -114,8 +127,43 @@ class SqlCartaRepository(CartasRepositoryPort):
         try:
             return await self._session.scalar(
                 select(ContadorCartaORM.last_value)
-                .where(ContadorCartaORM.card_type == tipo).with_for_update()
+                .where(ContadorCartaORM.card_type == tipo)
+                .with_for_update()
             )
         except DBAPIError as error:
             raise _traducir_error(error) from None
 
+    async def actualizar_contador(self, tipo: str, valor: int) -> None:
+        """Actualiza el contador bloqueado por el llamador en esta transacción."""
+        self._exigir_transaccion()
+        try:
+            actualizado = await self._session.scalar(
+                update(ContadorCartaORM)
+                .where(ContadorCartaORM.card_type == tipo)
+                .values(last_value=valor)
+                .returning(ContadorCartaORM.card_type)
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
+        if actualizado is None:
+            raise ErrorPersistencia(TipoErrorPersistencia.OPERACION)
+
+    async def ruta_evolucion(self, destino: str) -> tuple[str, ...]:
+        """Sigue las FK y termina al repetir un nodo mediante CYCLE de PostgreSQL."""
+        self._exigir_transaccion()
+        try:
+            ruta = await self._session.scalars(
+                text(
+                    "WITH RECURSIVE ruta(id, destino) AS ("
+                    " SELECT c.id, a.evolution_target_card_id FROM catalog_cards c"
+                    " JOIN catalog_abilities a ON a.id=c.ability_id WHERE c.id=:destino"
+                    " UNION ALL SELECT c.id, a.evolution_target_card_id FROM ruta"
+                    " JOIN catalog_cards c ON c.id=ruta.destino"
+                    " JOIN catalog_abilities a ON a.id=c.ability_id"
+                    ") CYCLE id SET ciclo USING camino SELECT id FROM ruta"
+                ),
+                {"destino": destino},
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
+        return tuple(ruta)

@@ -1,7 +1,7 @@
 # AGENTS.md — Poké-Arena
 
-**Actualización documental:** 2026-11-06. Contrato complementario v1.3.
-**Fase autorizada actualmente:** Entrega 1C, procesamiento de imágenes y GridFS con validación aislada. 1B.2B está validada en aislamiento y la base original permanece en 008. La carga dinámica sigue centralizada en `catalogo_module.py`. Los cambios de permisos originales y 1D requieren autorización independiente.
+**Actualización documental:** 2026-11-07. Contrato complementario v1.3.
+**Fase autorizada actualmente:** Entrega 1D, servicio Crear Carta desde Python con PostgreSQL y GridFS aislados. Las fases 1B.2B y 1C se validaron en aislamiento. La base original permanece en 008. Los cambios en servicios originales y 1E requieren autorización independiente.
 
 ## 1. Autoridad y alcance
 
@@ -73,7 +73,7 @@ Estas decisiones sustituyen las propuestas incompatibles de v1.2; son acuerdos d
 2. **Conservar PK actuales:** identificadores de entidades `VARCHAR(36)` y sus FKs; sin conversión a BIGINT ni identity. El contador mantiene su PK natural `card_type`.
 3. **Tipos canónicos:** `FUE`, `AGU`, `PLA`, `ELE`, `PSI`, `LUC`, usando `card_type`. Rarezas: `COMUN`, `POCO_COMUN`, `RARA`, `LEGENDARIA`.
 4. **Fuente de verdad de imágenes:** `catalog_card_images` controla metadatos, referencias y estado. La relación existente es `catalog_cards.image_id -> catalog_card_images.id`. No añadir un segundo estado autoritativo en cartas o MongoDB.
-5. **Binarios:** original y miniatura se almacenarán en MongoDB GridFS sobre volúmenes locales persistentes. No crear una colección propia redundante de metadatos `card_images`; las colecciones internas del bucket son necesarias y no equivalen a esa duplicación. El formato de referencia SQL/GridFS y el nombre definitivo del bucket quedan pendientes.
+5. **Binarios:** original y miniatura se almacenarán en MongoDB GridFS sobre volúmenes locales persistentes. No crear una colección propia redundante de metadatos `card_images`; las colecciones internas del bucket son necesarias y no equivalen a esa duplicación. En aislamiento se usan referencias `gridfs:<ObjectId>` y el bucket `card_assets`.
 6. **Conservar proyección y Outbox:** preservar `pokearena_catalog.cards_projection`, sus índices, `shared_outbox` y el archivo oficial `outbox_worker.py`. No activar nuevos procesos, modificar el worker ni crear otro worker en esta fase.
 7. **Versiones:** mantener PostgreSQL 16 (`postgres:16-alpine`) y MongoDB 7 (`mongo:7.0`), sin actualización mayor por esta alineación.
 8. **Alembic antes de sucesoras:** recuperar y verificar el historial existente en una fase autorizada antes de proponer migraciones sucesoras. La base auditada registra `008_flex_card_img_dims`; el historial está en Git aunque falte en el árbol actual. No ejecutar autogenerate con metadata incompleta, `stamp` para ocultar diferencias, `create_all()` ni DDL paralelo.
@@ -82,7 +82,7 @@ Estas decisiones sustituyen las propuestas incompatibles de v1.2; son acuerdos d
 
 **Requisitos funcionales que continúan vigentes:** original PNG/JPEG/WebP, máximo 5 000 000 bytes, proporción exacta 5:7, mínimo 600x840 y miniatura 200x280. Disponibilidad solo con estado `READY` en `catalog_card_images` y verificación real de ambos archivos. La revisión 008 original admite dimensiones flexibles. La sucesora 1B.2B validada en aislamiento exige dimensiones estrictas y miniatura completa para READY. Imagen inicialmente inválida no crea carta. Reintentos no duplican carta ni consumen otro código. SQL y GridFS no comparten transacción distribuida.
 
-**Pendientes:** estrategia síncrona/asíncrona, reintentos y reconciliación; serialización de referencias GridFS en SQL; bucket/base de medios y transición desde archivos locales; recuperación/retención idempotente; evolución de habilidades y conservación histórica; política de activación/desactivación; otros contratos de integración todavía no autorizados. Imports con guiones y separación ORM/dominio quedan resueltos para catálogo en 1B.2A, sin renombrar rutas. No resolverlos por inferencia ni crear columnas/colecciones para anticiparlos. Véase contrato §9.
+**Pendientes:** despliegue de esquema y permisos GridFS originales, transición desde archivos locales, retención de reservas y conciliación histórica; evolución de habilidades y conservación histórica; política de activación/desactivación; otros contratos de integración todavía no autorizados. Imports con guiones y separación ORM/dominio quedan resueltos para catálogo en 1B.2A, sin renombrar rutas. No resolverlos por inferencia ni crear columnas/colecciones para anticiparlos. Véase contrato §9.
 
 ## 6. Fases: ejecutar SOLO la autorizada
 
@@ -92,12 +92,13 @@ Estas decisiones sustituyen las propuestas incompatibles de v1.2; son acuerdos d
 - **1B.2A — ORM/persistencia (completada):** seis mapeos del esquema 008; dominio puro, puertos y repositorio asíncrono con transacción del llamador. Base declarativa única en `database/postgresql/base.py`, sin motores; idempotencia en `shared/idempotencia/models.py` y Outbox en `shared/outbox.py`. Pruebas aisladas y documentación; no cambiar esquema ni implementar el flujo completo.
 - **1B.2B — Compatibilidad SQL (validada en aislamiento):** la sucesora `1b2b_card_image_integrity` reemplaza dos CHECK de imágenes. Véase `backend/docs/contracts/SCHEMA_ALIGNMENT_1B2B.md`. Aplicación original pendiente de autorización.
 - **1C — GridFS (validada en aislamiento):** procesamiento Pillow, miniatura WebP, almacenamiento por ObjectId y verificación de pares. Véase `backend/docs/contracts/GRIDFS_IMAGE_STORAGE_1C.md`.
-- **2 — Caso de uso/API (pendiente):** implementar servicio, puertos, adaptadores, validación, idempotencia, autorización y consistencia conforme a decisiones explícitas. No incluye permiso implícito para activar workers.
+- **1D — Servicio Crear Carta (validado en aislamiento):** reserva durable, verificación GridFS y confirmación SQL de contador, imagen, carta, respuesta y Outbox. Véase `backend/docs/contracts/CARD_CREATION_SERVICE_1D.md`.
+- **1E — API (pendiente):** autorización, autenticación y traducción del caso de uso a HTTP. La activación de workers y proyección requiere autorización independiente.
 - **3 — Frontend/integración (pendiente):** integrar el frontend oficial solo con autorización separada.
 
 La autorización posterior de 1B.1 cubre la recuperación/verificación histórica exclusivamente en instancia aislada nueva. Las URLs de mantenimiento son explícitas, de rol separado y bases pokearena_alembic_*; no hay fallback a la API. No ejecutar Alembic sobre pokearena_db ni ampliar privilegios de poke_api_user. La autorización de 1B.2B cubre exclusivamente la sucesora en copias aisladas. En el cierre autorizado de 1A se retiraron los dos binds ausentes y se conservaron red y volúmenes. El primario mantiene identidad/configuración y no tenía réplicas activas ni slots; no tocar el volumen de réplica histórica. SQL usa permisos por tabla sin administración y Mongo rol local solo sobre cards_projection; ampliar permisos GridFS requiere decisión explícita del bucket y autorización. Véase estado y evidencia en README de raíz.
 
-No alterar `gestion-ubicaciones`, `identidad`, `motor-juego`, `torneos` ni `frontend` durante las fases 0–1C salvo alcance adicional explícito. Cada fase tiene criterios detallados en el contrato §7; terminar una no autoriza la siguiente.
+No alterar `gestion-ubicaciones`, `identidad`, `motor-juego`, `torneos` ni `frontend` durante las fases 0–1D salvo alcance adicional explícito. Cada fase tiene criterios detallados en el contrato §7; terminar una no autoriza la siguiente.
 
 ## 7. Procedimiento de trabajo y entrega
 

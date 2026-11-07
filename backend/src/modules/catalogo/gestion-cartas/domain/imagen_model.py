@@ -1,7 +1,8 @@
-"""Datos de imagen compartidos por procesamiento, GridFS y el futuro caso de uso."""
+"""Datos de imagen compartidos por procesamiento, GridFS y el caso de uso."""
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from hashlib import sha256
 
 MAX_IMAGE_BYTES = 5_000_000
 THUMBNAIL_SIZE = (200, 280)
@@ -52,8 +53,13 @@ class ReferenciasImagen:
 
 @dataclass(frozen=True, slots=True)
 class ImagenAlmacenada:
-    """Referencias y metadatos para el futuro registro SQL."""
+    """Referencias y metadatos para el registro SQL."""
 
     referencias: ReferenciasImagen
     original: MetadatosImagen
     miniatura: MetadatosImagen
+
+
+def huella_imagen(datos: bytes) -> str:
+    """Calcula el SHA-256 de los bytes originales sin modificar su contenido."""
+    return sha256(datos).hexdigest()

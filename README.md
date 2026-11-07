@@ -330,3 +330,16 @@ Las pruebas unitarias funcionan sin bases. Las pruebas reales usan
 El [informe 1C](backend/docs/contracts/GRIDFS_IMAGE_STORAGE_1C.md) documenta
 la configuración, los permisos del bucket, las pruebas y la integración
 pendiente en 1D.
+
+## Entrega 1D — Servicio Crear Carta desde Python
+
+`catalogo_module.crear_servicio_crear_carta()` compone el servicio con las
+conexiones oficiales. El servicio requiere PostgreSQL aislado en
+`1b2b_card_image_integrity` y MongoDB 7 autenticado sobre `card_assets`.
+Las pruebas nuevas usan `ORM_TEST_DATABASE_URL` y `MONGO_GRIDFS_TEST_URL` hacia
+destinos descartables. Los casos unitarios funcionan sin esas URLs.
+
+El [informe 1D](backend/docs/contracts/CARD_CREATION_SERVICE_1D.md) incluye el
+ejemplo de invocación, el protocolo de recuperación y los comandos para
+reproducir las **152 pruebas aprobadas** con ambos motores. El despliegue sobre
+las bases originales y la exposición por API requieren autorización separada.

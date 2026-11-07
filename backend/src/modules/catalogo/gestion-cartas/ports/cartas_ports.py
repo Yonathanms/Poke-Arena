@@ -48,3 +48,11 @@ class CartasRepositoryPort(Protocol):
         """Lee con bloqueo hasta terminar la transacción; no incrementa ni crea filas."""
         ...
 
+    async def actualizar_contador(self, tipo: str, valor: int) -> None:
+        """Persiste un valor tras bloquear la fila en la misma transacción."""
+        ...
+
+    async def ruta_evolucion(self, destino: str) -> tuple[str, ...]:
+        """Lee la cadena en un snapshot SQL. Una repetición indica un ciclo."""
+        ...
+

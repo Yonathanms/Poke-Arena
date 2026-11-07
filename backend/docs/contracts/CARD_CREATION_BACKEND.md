@@ -10,7 +10,7 @@
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: Entrega 1C en aislamiento.** Validación, miniatura WebP, almacenamiento GridFS y comprobación de integridad. El despliegue sobre los servicios originales y la coordinación de Crear Carta en 1D requieren autorización independiente.
+> **Alcance vigente: Entrega 1D en aislamiento.** El servicio Crear Carta coordina los componentes SQL y GridFS validados en fases anteriores. El despliegue sobre los servicios originales y la integración HTTP requieren autorización independiente.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -346,11 +346,11 @@ La auditoría encontró `pokearena_catalog.cards_projection` con índices `_id`,
 5. No cargar binarios en listados. Diseñar acceso controlado por backend en fase API.
 6. Marcar `catalog_card_images.state=READY` únicamente tras verificar existencia y recuperación de ambos archivos; una carta sin imagen permanece no disponible para jugadores.
 
-Los adaptadores 1C validan, generan y verifican ambos archivos. La coordinación del estado SQL y la publicación corresponden a 1D.
+Los adaptadores 1C validan, generan y verifican ambos archivos. 1D coordina el estado SQL y devuelve la creación confirmada desde Python. La exposición por API y la proyección pertenecen a fases posteriores.
 
 ### 5.4 Consistencia entre motores: invariantes y decisiones pendientes
 
-SQL y GridFS no comparten transacción. La elección síncrona/asíncrona de procesamiento y los detalles de reintentos/reconciliación siguen pendientes; documentarlos antes del caso de uso, considerando el ADR histórico de procesamiento durable y el Outbox existente.
+SQL y GridFS no comparten transacción. 1D reserva los dos IDs en SQL antes de escribir en GridFS y verifica ambos archivos en la misma invocación. Una transacción posterior confirma la creación y su evento. El protocolo, la recuperación y el alcance de la compensación se detallan en [el informe 1D](CARD_CREATION_SERVICE_1D.md).
 
 Invariantes exigidas para cualquier estrategia:
 
@@ -457,9 +457,13 @@ La autorización vigente cubre 1C en bases aisladas. La aplicación de la suceso
 - **Aceptar solo con** almacenamiento/recuperación de original y miniatura en entorno aislado, referencias verificables, persistencia local y preparación idempotente sin colección propia de metadatos.
 - Preservar proyección, Outbox e índices existentes. No activar workers, reconciliadores ni caso de uso productivo por esta fase.
 
-### 2 — Caso de uso Crear carta y API (pendiente de autorización)
+### 1D — Caso de uso Crear carta (validado en aislamiento)
 
-Completar archivos oficiales `cartas_ports.py`, `carta_model.py`, `cartas_service.py`, adaptadores, DTOs y controlador; componer en `catalogo_module.py`. Antes, aprobar estrategia de procesamiento/recuperación, OpenAPI, errores y autorización. Reutilizar idempotencia compartida. Probar invariantes del §8. La activación de procesos requiere alcance explícito adicional, no se deduce de conservar Outbox.
+El servicio compuesto en `catalogo_module.py` reutiliza la idempotencia y el Outbox compartidos. La reserva queda en SQL, los archivos se verifican en GridFS y la transacción final confirma los efectos de la creación. Véase [el informe 1D](CARD_CREATION_SERVICE_1D.md).
+
+### 1E — API (pendiente de autorización)
+
+Aprobar OpenAPI, traducción de errores, autenticación y autorización. Reutilizar el servicio y completar DTOs y controlador. La publicación por proyección y la activación de procesos requieren alcance independiente.
 
 ### 3 — Integración full stack (pendiente de autorización)
 
@@ -490,10 +494,10 @@ Las decisiones de §1.2 están aprobadas. Los siguientes detalles **no** lo est�
 | Sucesoras después de 1B.1 | Historial reproducido y comparado; sucesora de imágenes validada en aislamiento. La aplicación a la base original requiere autorización independiente. 009 de ubicaciones sigue excluida. |
 | Imports con guiones | Aprobado en 1B.2A: importlib solo en composición, imports relativos internos, sin renombrar ni modificar sys.path; probar composición/registro y documentar límites. |
 | Discrepancia ORM en notas oficiales | Resuelta en 1B.2A por autorización explícita: dominio puro y mapeos en adaptadores; anotaciones documentales corregidas, topología preservada. |
-| Referencias SQL/GridFS | Resolver formato de storage keys, tipo de ID GridFS, base/bucket y compatibilidad con almacenamiento previo; no duplicar metadatos. |
-| Procesamiento y recuperación | Elegir síncrono/asíncrono, reintentos, reconciliación, compensación y respuesta HTTP, considerando mecanismos históricos. No activar procesos ahora. |
+| Referencias SQL/GridFS | Referencias `gridfs:<ObjectId>` y bucket `card_assets` validados en aislamiento. Pendientes los permisos originales y la transición desde archivos locales. |
+| Procesamiento y recuperación | 1D valida el procesamiento en la misma invocación, los reintentos y la compensación controlada. Pendientes la conciliación operativa y la traducción a HTTP. |
 | Publicación y proyección | Precisar actualización versionada y tratamiento de fallos para impedir exposición de imágenes incompletas. Conservar la proyección actual. |
-| Idempotencia | Recuperación de progreso abandonado, retención y necesidad de ajustes SQL; mantener claves/respuestas existentes. |
+| Idempotencia | 1D recupera el progreso con la misma clave y contenido. Pendientes la retención y la conciliación de respuestas históricas. |
 | Habilidades | Completar disparadores/condiciones/efectos/objetivos, JSON y ciclos sin reinterpretar `params` ni crear funcionalidad ajena a esta historia. |
 | Conservación histórica | Definir desactivación/versionado/snapshots antes de editar cartas o habilidades usadas. No imponer `is_active` automáticamente. |
 | Operación posterior a 1A | 1A está cerrada; nuevas recreaciones/rotaciones requieren alcance explícito y revalidar respaldos, dependencias y privilegios. |
@@ -510,7 +514,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** exclusivamente 1C en aislamiento. La aplicación a las bases originales y 1D requieren autorización independiente.
+**Autorización vigente:** exclusivamente 1D en aislamiento. La aplicación a las bases originales y 1E requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

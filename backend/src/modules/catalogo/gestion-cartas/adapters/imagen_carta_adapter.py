@@ -2,7 +2,6 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from hashlib import sha256
 from io import BytesIO
 
 from PIL import Image, ImageOps
@@ -14,6 +13,7 @@ from ..domain.imagen_model import (
     FormatoImagen,
     ImagenProcesada,
     MetadatosImagen,
+    huella_imagen,
 )
 from ..ports.imagen_ports import (
     ContenidoInconsistente,
@@ -69,7 +69,7 @@ def _decodificar(
             raise ImagenInvalida("Se requiere mínimo 600 × 840 y proporción exacta 5:7")
         yield (
             orientada,
-            MetadatosImagen(formato, ancho, alto, len(datos), sha256(datos).hexdigest()),
+            MetadatosImagen(formato, ancho, alto, len(datos), huella_imagen(datos)),
         )
 
 

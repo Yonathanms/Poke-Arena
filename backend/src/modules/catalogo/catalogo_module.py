@@ -18,6 +18,8 @@ dominio_cartas = import_module(f"{_PAQUETE}.domain.carta_model")
 puertos_cartas = import_module(f"{_PAQUETE}.ports.cartas_ports")
 dominio_imagenes = import_module(f"{_PAQUETE}.domain.imagen_model")
 puertos_imagenes = import_module(f"{_PAQUETE}.ports.imagen_ports")
+aplicacion_cartas = import_module(f"{_PAQUETE}.services.cartas_service")
+persistencia_creacion = import_module(f"{_PAQUETE}.adapters.sql_creacion_carta")
 _orm = import_module(f"{_PAQUETE}.adapters.cartas_orm")
 _repositorio = import_module(f"{_PAQUETE}.adapters.sql_carta_repository")
 
@@ -57,3 +59,14 @@ def crear_almacen_imagenes() -> Any:
     bucket = AsyncGridFSBucket(get_mongo_db(), bucket_name=get_settings().MONGO_GRIDFS_BUCKET)
     return modulo.AlmacenImagenGridFS(bucket, crear_procesador_imagenes())
 
+
+
+def crear_servicio_crear_carta() -> Any:
+    """Compone el caso de uso para Python, con los clientes oficiales."""
+    from src.database.postgresql.connection import AsyncSessionLocal, engine
+
+    return aplicacion_cartas.CrearCarta(
+        persistencia_creacion.SqlCoordinacionCreacion(engine, AsyncSessionLocal),
+        crear_procesador_imagenes(),
+        crear_almacen_imagenes(),
+    )
