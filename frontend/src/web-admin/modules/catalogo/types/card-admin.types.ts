@@ -95,3 +95,15 @@ export interface CardValidationResult {
   readonly normalizedValues?: CreateCardFormValues;
   readonly errors: CardFieldErrors;
 }
+
+/**
+ * Imagen original validada en el cliente y lista para previsualización (`objectUrl`)
+ * y posterior adjunción en el `FormData` de Crear Carta.
+ */
+export interface ValidatedCardImageSelection {
+  readonly file: File;
+  readonly previewUrl: string;
+  readonly dimensions: ImageDimensions;
+  readonly sizeBytes: number;
+  readonly mimeType: AllowedImageMimeType;
+}

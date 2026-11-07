@@ -248,6 +248,141 @@ export function isValidIdempotencyKey(key: string): boolean {
   return typeof key === "string" && CARD_VALIDATION_CONSTRAINTS.IDEMPOTENCY_KEY_PATTERN.test(key);
 }
 
+/** Interfaz inyectable de creación/revocación de Object URLs para pruebas deterministas. */
+export interface ObjectUrlManager {
+  readonly createObjectURL: (blob: Blob) => string;
+  readonly revokeObjectURL: (url: string) => void;
+}
+
+/** Función inyectable que obtiene las dimensiones visuales de un archivo de imagen. */
+export type ImageDimensionsDecoder = (file: Blob, objectUrl: string) => Promise<ImageDimensions>;
+
+/** Resultado discriminado de la inspección y decodificación asíncrona de una imagen. */
+export type ImageInspectionOutcome =
+  | {
+      readonly status: "valid";
+      readonly previewUrl: string;
+      readonly dimensions: ImageDimensions;
+      readonly sizeBytes: number;
+      readonly mimeType: AllowedImageMimeType;
+    }
+  | {
+      readonly status: "invalid";
+      readonly errorMessage: string;
+    }
+  | {
+      readonly status: "cancelled";
+    };
+
+/**
+ * Controlador secuencial para validar y previsualizar archivos de imagen evitando
+ * fugas de `URL.createObjectURL` y condiciones de carrera cuando el usuario selecciona
+ * o reemplaza archivos rápidamente.
+ *
+ * Garantías:
+ * 1. Cada nueva selección o limpieza incrementa el contador de generación e invalida
+ *    cualquier decodificación anterior aún en vuelo.
+ * 2. Si una decodificación antigua termina después de haber sido reemplazada o limpiada,
+ *    su `objectUrl` temporal se revoca inmediatamente y su resultado se descarta (`cancelled`).
+ * 3. Si la validación de metadatos o dimensiones falla, la `objectUrl` recién creada se
+ *    revoca antes de retornar `invalid`.
+ * 4. Cuando una nueva imagen resulta válida, se revoca la `objectUrl` de la imagen válida
+ *    anterior antes de conservar la nueva.
+ */
+export class SequentialImageSelectionPipeline {
+  private readonly urlManager: ObjectUrlManager;
+  private readonly decodeDimensions: ImageDimensionsDecoder;
+  private currentGeneration = 0;
+  private activePreviewUrl: string | null = null;
+
+  constructor(options: {
+    readonly urlManager: ObjectUrlManager;
+    readonly decodeDimensions: ImageDimensionsDecoder;
+  }) {
+    this.urlManager = options.urlManager;
+    this.decodeDimensions = options.decodeDimensions;
+  }
+
+  public getCurrentPreviewUrl(): string | null {
+    return this.activePreviewUrl;
+  }
+
+  /**
+   * Revoca la URL de previsualización activa (si existe) e invalida cualquier
+   * operación de decodificación en curso.
+   */
+  public clearActiveSelection(): void {
+    this.currentGeneration += 1;
+    this.revokeActivePreview();
+  }
+
+  private revokeActivePreview(): void {
+    if (this.activePreviewUrl !== null) {
+      const urlToRevoke = this.activePreviewUrl;
+      this.activePreviewUrl = null;
+      this.urlManager.revokeObjectURL(urlToRevoke);
+    }
+  }
+
+  /**
+   * Valida metadatos, crea un `objectUrl`, decodifica dimensiones y verifica
+   * proporción 5:7, mínimo 600×840 y techo de 20 MP.
+   */
+  public async inspectFile(file: Blob & { readonly name?: string }): Promise<ImageInspectionOutcome> {
+    const generation = ++this.currentGeneration;
+
+    // Al iniciar una nueva selección, revocamos cualquier preview previa activa
+    this.revokeActivePreview();
+
+    const metadataError = validateImageFileMetadata({
+      sizeBytes: file.size,
+      mimeType: file.type,
+      fileName: file.name,
+    });
+    if (metadataError !== null) {
+      return { status: "invalid", errorMessage: metadataError };
+    }
+
+    const normalizedMime = file.type.trim().toLowerCase() as AllowedImageMimeType;
+    const candidateUrl = this.urlManager.createObjectURL(file);
+
+    let dimensions: ImageDimensions;
+    try {
+      dimensions = await this.decodeDimensions(file, candidateUrl);
+    } catch {
+      this.urlManager.revokeObjectURL(candidateUrl);
+      if (generation !== this.currentGeneration) {
+        return { status: "cancelled" };
+      }
+      return {
+        status: "invalid",
+        errorMessage: "No se pudo decodificar la imagen. Verifica que el archivo PNG, JPEG o WebP no esté dañado.",
+      };
+    }
+
+    // Si mientras se decodificaba el usuario eligió otro archivo o desmontó el componente:
+    if (generation !== this.currentGeneration) {
+      this.urlManager.revokeObjectURL(candidateUrl);
+      return { status: "cancelled" };
+    }
+
+    const dimensionError = validateImageDimensions(dimensions);
+    if (dimensionError !== null) {
+      this.urlManager.revokeObjectURL(candidateUrl);
+      return { status: "invalid", errorMessage: dimensionError };
+    }
+
+    this.activePreviewUrl = candidateUrl;
+    return {
+      status: "valid",
+      previewUrl: candidateUrl,
+      dimensions,
+      sizeBytes: file.size,
+      mimeType: normalizedMime,
+    };
+  }
+}
+
 /**
  * Ejecuta la validación integral de los campos de Crear Carta y devuelve los valores
  * normalizados si todos los campos son válidos.
