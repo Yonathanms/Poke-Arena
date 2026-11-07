@@ -55,6 +55,8 @@ def cmd_setup_env(_args: argparse.Namespace) -> None:
     env_example = ROOT_DIR / ".env.example"
     if not env_file.exists() and env_example.exists():
         shutil.copy(env_example, env_file)
+        if not IS_WINDOWS:
+            env_file.chmod(0o600)
         print("\n[OK] Archivo .env generado exitosamente a partir de .env.example.")
     elif env_file.exists():
         print("\n[INFO] El archivo .env ya existe. No se sobrescribió.")
@@ -93,9 +95,13 @@ def cmd_install(_args: argparse.Namespace) -> None:
 
 
 def cmd_dbs(_args: argparse.Namespace) -> None:
-    """Inicia las bases de datos en Docker (PostgreSQL :5432 y MongoDB :27017)."""
+    """Inicia servicios sin recrear contenedores existentes ni aplicar cambios pendientes.
+
+    Compose verifica los recursos externos. Una recreación requiere revisar
+    dependencias, respaldo y autorización; este atajo no la ejecuta.
+    """
     print("\n[Docker] Iniciando PostgreSQL (:5432) y MongoDB (:27017)...")
-    run_cmd(["docker", "compose", "up", "-d"])
+    run_cmd(["docker", "compose", "up", "-d", "--no-recreate"])
 
 
 def cmd_stop(_args: argparse.Namespace) -> None:

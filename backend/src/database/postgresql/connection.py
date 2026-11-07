@@ -32,6 +32,8 @@ pool_kwargs: dict[str, Any] = (
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
+    hide_parameters=True,
+    connect_args={"timeout": settings.DB_CONNECT_TIMEOUT_SECONDS},
     **pool_kwargs,
 )
 
@@ -50,7 +52,11 @@ AsyncWriteSessionLocal = AsyncSessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency injection de FastAPI que provee una sesión de base de datos."""
+    """Provee una sesión y la cierra al terminar; el caso de uso decide el commit.
+
+    No ejecuta DDL ni confirma transacciones automáticamente. Los errores de
+    conexión/consulta se propagan al consumidor; al cerrar se revierte lo pendiente.
+    """
     async with AsyncSessionLocal() as session:
         yield session
 

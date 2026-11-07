@@ -1,3 +1,5 @@
+"""Cliente MongoDB compartido por event loop, sin bootstrap ni escrituras de negocio."""
+
 import asyncio
 from typing import Any
 
@@ -11,7 +13,11 @@ _clients: dict[int, AsyncIOMotorClient[Any]] = {}
 
 
 def get_mongo_client() -> AsyncIOMotorClient[Any]:
-    """Retorna cliente asíncrono Motor para MongoDB :27017."""
+    """Reutiliza cliente Motor del loop actual sin abrir conexiones alternativas.
+
+    La conexión es diferida; ping/operaciones propagan errores de autenticación
+    o disponibilidad dentro del timeout configurado. No crea colecciones/usuarios.
+    """
     try:
         loop = asyncio.get_running_loop()
         loop_id = id(loop)
@@ -19,18 +25,24 @@ def get_mongo_client() -> AsyncIOMotorClient[Any]:
         loop_id = 0
 
     if loop_id not in _clients:
-        _clients[loop_id] = AsyncIOMotorClient(settings.MONGO_URL)
+        timeout_ms = settings.DB_CONNECT_TIMEOUT_SECONDS * 1000
+        _clients[loop_id] = AsyncIOMotorClient(
+            settings.MONGO_URL,
+            serverSelectionTimeoutMS=timeout_ms,
+            connectTimeoutMS=timeout_ms,
+            appname="pokearena-backend",
+        )
     return _clients[loop_id]
 
 
 def get_mongo_db() -> AsyncIOMotorDatabase[Any]:
-    """Retorna la base de datos de MongoDB configurada."""
+    """Devuelve la base configurada sin crearla ni modificar sus colecciones."""
     client = get_mongo_client()
     return client[settings.MONGO_DB]
 
 
 def close_mongo_connection() -> None:
-    """Cierra las conexiones activas con MongoDB."""
+    """Cierra todos los clientes y vacía el cache; permite llamadas repetidas."""
     for client in _clients.values():
         client.close()
     _clients.clear()
