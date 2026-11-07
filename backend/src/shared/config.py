@@ -98,6 +98,14 @@ class Settings(EnvironmentSettings):
             return value.strip().lower() in {"1", "true", "yes", "on", "debug"}
         return bool(value)
 
+    @field_validator("ALLOWED_ORIGINS")
+    @classmethod
+    def validate_cors(cls, value: str) -> str:
+        """Exige una lista de orígenes explícitos sin comodines."""
+        if "*" in value:
+            raise ValueError("CORS requiere orígenes explícitos")
+        return value
+
     @property
     def cors_origins(self) -> list[str]:
         """Devuelve orígenes CORS normalizados sin entradas vacías."""

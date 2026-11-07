@@ -10,7 +10,7 @@
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: Entrega 1D en aislamiento.** El servicio Crear Carta coordina los componentes SQL y GridFS validados en fases anteriores. El despliegue sobre los servicios originales y la integración HTTP requieren autorización independiente.
+> **Alcance vigente: Entrega 1E en aislamiento.** Crear Carta se expone mediante HTTP con identidad autenticada y autorización de plataforma. El despliegue sobre los servicios originales y 1F requieren autorización independiente.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -346,7 +346,7 @@ La auditoría encontró `pokearena_catalog.cards_projection` con índices `_id`,
 5. No cargar binarios en listados. Diseñar acceso controlado por backend en fase API.
 6. Marcar `catalog_card_images.state=READY` únicamente tras verificar existencia y recuperación de ambos archivos; una carta sin imagen permanece no disponible para jugadores.
 
-Los adaptadores 1C validan, generan y verifican ambos archivos. 1D coordina el estado SQL y devuelve la creación confirmada desde Python. La exposición por API y la proyección pertenecen a fases posteriores.
+Los adaptadores 1C validan, generan y verifican ambos archivos. 1D coordina el estado SQL y devuelve la creación confirmada desde Python. 1E expone el servicio por API y la proyección corresponde a 1F.
 
 ### 5.4 Consistencia entre motores: invariantes y decisiones pendientes
 
@@ -461,9 +461,9 @@ La autorización vigente cubre 1C en bases aisladas. La aplicación de la suceso
 
 El servicio compuesto en `catalogo_module.py` reutiliza la idempotencia y el Outbox compartidos. La reserva queda en SQL, los archivos se verifican en GridFS y la transacción final confirma los efectos de la creación. Véase [el informe 1D](CARD_CREATION_SERVICE_1D.md).
 
-### 1E — API (pendiente de autorización)
+### 1E — API (validada en aislamiento)
 
-Aprobar OpenAPI, traducción de errores, autenticación y autorización. Reutilizar el servicio y completar DTOs y controlador. La publicación por proyección y la activación de procesos requieren alcance independiente.
+Crear Carta usa `POST /api/v1/content/cards` con sesión de plataforma y rol administrativo. Se conserva 1D y se verifica OIDC localmente con firmas RSA. La validación con Google real y el despliegue original siguen pendientes. Véase [el informe 1E](CARD_CREATION_API_1E.md). La publicación por proyección requiere autorización independiente.
 
 ### 3 — Integración full stack (pendiente de autorización)
 
@@ -514,7 +514,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** exclusivamente 1D en aislamiento. La aplicación a las bases originales y 1E requieren autorización independiente.
+**Autorización vigente:** exclusivamente 1E en aislamiento. La aplicación a las bases originales y 1F requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

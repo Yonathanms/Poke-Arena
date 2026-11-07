@@ -1,7 +1,7 @@
 # AGENTS.md — Poké-Arena
 
 **Actualización documental:** 2026-11-07. Contrato complementario v1.3.
-**Fase autorizada actualmente:** Entrega 1D, servicio Crear Carta desde Python con PostgreSQL y GridFS aislados. Las fases 1B.2B y 1C se validaron en aislamiento. La base original permanece en 008. Los cambios en servicios originales y 1E requieren autorización independiente.
+**Fase autorizada actualmente:** Entrega 1E, API y seguridad de Crear Carta en aislamiento. La base original permanece en 008. La habilitación de servicios originales y 1F requieren autorización independiente.
 
 ## 1. Autoridad y alcance
 
@@ -39,7 +39,7 @@ Si hay discrepancias materiales con decisiones anteriores, documentarlas y consu
 
 ## 3. Arquitectura hexagonal y dependencias
 
-- `controllers`: adaptación HTTP, autenticación/autorización y DTOs. Sin SQL ni bytes de imagen.
+- `controllers`: adaptación HTTP, autenticación/autorización y DTOs. Sin SQL ni procesamiento de imágenes. En 1E el controlador adapta el archivo acotado al comando 1D.
 - `services`: casos de uso, orquestación, invariantes, idempotencia y coordinación a través de puertos. Sin dependencias de FastAPI ni consultas SQL directas.
 - `domain`: entidades, tipos y reglas puras; **nunca** importar SQLAlchemy, PyMongo, GridFS, FastAPI o infraestructura.
 - `ports`: contratos/Protocol de interfaces que necesitan los servicios; no implementaciones.
@@ -93,7 +93,8 @@ Estas decisiones sustituyen las propuestas incompatibles de v1.2; son acuerdos d
 - **1B.2B — Compatibilidad SQL (validada en aislamiento):** la sucesora `1b2b_card_image_integrity` reemplaza dos CHECK de imágenes. Véase `backend/docs/contracts/SCHEMA_ALIGNMENT_1B2B.md`. Aplicación original pendiente de autorización.
 - **1C — GridFS (validada en aislamiento):** procesamiento Pillow, miniatura WebP, almacenamiento por ObjectId y verificación de pares. Véase `backend/docs/contracts/GRIDFS_IMAGE_STORAGE_1C.md`.
 - **1D — Servicio Crear Carta (validado en aislamiento):** reserva durable, verificación GridFS y confirmación SQL de contador, imagen, carta, respuesta y Outbox. Véase `backend/docs/contracts/CARD_CREATION_SERVICE_1D.md`.
-- **1E — API (pendiente):** autorización, autenticación y traducción del caso de uso a HTTP. La activación de workers y proyección requiere autorización independiente.
+- **1E — API (validada en aislamiento):** autenticación Google OIDC con claves locales de prueba, sesión opaca, autorización y adaptación HTTP de 1D. Véase `backend/docs/contracts/CARD_CREATION_API_1E.md`.
+- **1F — Outbox y proyección (pendiente):** activar o modificar procesos requiere autorización independiente.
 - **3 — Frontend/integración (pendiente):** integrar el frontend oficial solo con autorización separada.
 
 La autorización posterior de 1B.1 cubre la recuperación/verificación histórica exclusivamente en instancia aislada nueva. Las URLs de mantenimiento son explícitas, de rol separado y bases pokearena_alembic_*; no hay fallback a la API. No ejecutar Alembic sobre pokearena_db ni ampliar privilegios de poke_api_user. La autorización de 1B.2B cubre exclusivamente la sucesora en copias aisladas. En el cierre autorizado de 1A se retiraron los dos binds ausentes y se conservaron red y volúmenes. El primario mantiene identidad/configuración y no tenía réplicas activas ni slots; no tocar el volumen de réplica histórica. SQL usa permisos por tabla sin administración y Mongo rol local solo sobre cards_projection; ampliar permisos GridFS requiere decisión explícita del bucket y autorización. Véase estado y evidencia en README de raíz.

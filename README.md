@@ -343,3 +343,16 @@ El [informe 1D](backend/docs/contracts/CARD_CREATION_SERVICE_1D.md) incluye el
 ejemplo de invocación, el protocolo de recuperación y los comandos para
 reproducir las **152 pruebas aprobadas** con ambos motores. El despliegue sobre
 las bases originales y la exposición por API requieren autorización separada.
+
+## Entrega 1E — API Crear Carta
+
+La ruta `POST /api/v1/content/cards` usa multipart, `Idempotency-Key` y una
+sesión de plataforma con rol `PLATFORM_ADMIN`. El intercambio
+`POST /api/v1/identity/google/session` recibe un ID token de Google y emite el
+Bearer opaco. OpenAPI está disponible en `/docs`.
+
+Para el ensayo aislado configura `GOOGLE_OAUTH_CLIENT_ID`,
+`PLATFORM_ADMIN_GOOGLE_SUBJECTS` y `ALLOWED_ORIGINS`. La suite usa claves RSA
+locales y URLs privadas de PostgreSQL 16 y MongoDB 7. Consulta el
+[informe 1E](backend/docs/contracts/CARD_CREATION_API_1E.md) para ver los
+comandos, permisos y condiciones de despliegue.

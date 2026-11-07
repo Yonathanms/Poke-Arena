@@ -70,3 +70,9 @@ def crear_servicio_crear_carta() -> Any:
         crear_procesador_imagenes(),
         crear_almacen_imagenes(),
     )
+
+
+def router_cartas(administrador: Any) -> Any:
+    """Compone el router del catálogo con la autorización pública de identidad."""
+    modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
+    return modulo.crear_router(administrador, crear_servicio_crear_carta)
