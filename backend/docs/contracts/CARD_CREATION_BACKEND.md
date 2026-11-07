@@ -10,7 +10,7 @@
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: Entrega 1E en aislamiento.** Crear Carta se expone mediante HTTP con identidad autenticada y autorización de plataforma. El despliegue sobre los servicios originales y 1F requieren autorización independiente.
+> **Alcance vigente: Entrega 1F en aislamiento.** El worker independiente consume CardCreated y mantiene `cards_projection`. El despliegue sobre los servicios originales y 1G requieren autorización independiente.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -335,7 +335,7 @@ La auditoría encontró `pokearena_catalog.cards_projection` con índices `_id`,
 
 `shared_outbox` conserva eventos JSONB, agregado/versiones, correlación, estado y mecanismos de intentos/lease. Mantener UNIQUE `(aggregate_type, aggregate_id, aggregate_version)` e índices existentes. Un evento figuraba PROCESSED; esto no demuestra que el worker actual funcione.
 
-`backend/src/database/outbox_worker.py` es un esqueleto: su lote no procesa eventos y la función de proyección apunta a `cards_catalog`, diferente de `cards_projection`. No cambiarlo, activarlo ni duplicarlo ahora. Cualquier recuperación de código histórico debe adaptarse a los puertos y rutas oficiales después de aprobación. No introducir Redis, colas ni procesos nuevos por esta actualización.
+`backend/src/database/outbox_worker.py` es el punto de entrada independiente de 1F. Reclama únicamente eventos CardCreated y publica en `cards_projection` usando la versión del agregado. Se mantiene fuera de FastAPI y restringido al entorno aislado. Véase [el informe 1F](CARD_CREATION_OUTBOX_1F.md).
 
 ### 5.3 Requisitos funcionales de imágenes conservados
 
@@ -514,7 +514,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** exclusivamente 1E en aislamiento. La aplicación a las bases originales y 1F requieren autorización independiente.
+**Autorización vigente:** exclusivamente 1F en aislamiento. La aplicación a las bases originales y 1G requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

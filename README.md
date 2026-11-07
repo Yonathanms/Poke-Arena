@@ -356,3 +356,12 @@ Para el ensayo aislado configura `GOOGLE_OAUTH_CLIENT_ID`,
 locales y URLs privadas de PostgreSQL 16 y MongoDB 7. Consulta el
 [informe 1E](backend/docs/contracts/CARD_CREATION_API_1E.md) para ver los
 comandos, permisos y condiciones de despliegue.
+
+## Entrega 1F — Worker Outbox
+
+Desde `backend/`, ejecutar `.venv/bin/python -m src.database.outbox_worker
+--once` para procesar un lote o quitar `--once` para procesar continuamente.
+Configurar las URLs privadas de la copia PostgreSQL y MongoDB antes de
+ejecutarlo. El worker exige el índice UNIQUE de código en `cards_projection`.
+El [informe 1F](backend/docs/contracts/CARD_CREATION_OUTBOX_1F.md) reúne los
+parámetros, permisos, consultas y procedimiento de reconciliación.

@@ -1,52 +1,101 @@
-"""Worker en segundo plano para el patrón Transactional Outbox.
+"""Punto de entrada independiente para el consumidor CardCreated de 1F."""
 
-Lee eventos pendientes de sincronización guardados en la tabla 'outbox' de PostgreSQL
-y los proyecta hacia MongoDB para mantener el catálogo de búsqueda rápido y actualizado.
-"""
-
+import argparse
 import asyncio
 import logging
-from typing import Any
+import signal
+from urllib.parse import urlsplit
 
-from src.database.mongodb.connection import get_mongo_db
-from src.database.postgresql.connection import AsyncWriteSessionLocal
+from pydantic import ValidationError
+from pymongo.errors import PyMongoError
+
+from src.database.mongodb.connection import close_mongo_connection
+from src.modules.catalogo.catalogo_module import componer_procesador_outbox
+from src.shared.config import Settings, get_settings
 
 logger = logging.getLogger("pokearena.outbox_worker")
 
 
-async def sync_card_created(event_payload: dict[str, Any]) -> None:
-    """Proyecta una carta creada en PostgreSQL hacia la colección de MongoDB."""
-    mongo_db = get_mongo_db()
-    await mongo_db["cards_catalog"].update_one(
-        {"code": event_payload["code"]},
-        {"$set": event_payload},
-        upsert=True,
-    )
-    logger.info("Carta sincronizada con éxito en MongoDB: %s", event_payload.get("code"))
+def verificar_configuracion(ajustes: Settings) -> None:
+    """Limita la ejecución de 1F a destinos explícitos en loopback."""
+    pg = urlsplit(ajustes.DATABASE_URL)
+    mongo = urlsplit(ajustes.MONGO_URL)
+    if (
+        pg.hostname not in {"127.0.0.1", "::1", "localhost"}
+        or not pg.path.startswith("/pokearena_alembic_")
+        or not pg.username
+        or mongo.scheme != "mongodb"
+        or mongo.hostname not in {"127.0.0.1", "::1", "localhost"}
+        or "," in mongo.netloc.rsplit("@", 1)[-1]
+        or not mongo.username
+        or not ajustes.MONGO_DB.startswith(("pokearena_gridfs_test_", "pokearena_outbox_"))
+        or ajustes.OUTBOX_LEASE_SECONDS <= ajustes.DB_CONNECT_TIMEOUT_SECONDS
+    ):
+        raise ValueError("configuracion_outbox_fuera_de_1f")
 
 
-async def process_outbox_batch() -> int:
-    """Procesa un lote de eventos pendientes de la tabla outbox."""
-    # En la implementación completa, se leen los registros con processed=False de PostgreSQL,
-    # se ejecutan los proyectores correspondientes y se marcan como processed=True.
-    async with AsyncWriteSessionLocal() as session:
-        _ = session  # Placeholder para la consulta SQL
-        processed_count = 0
+async def run_outbox_worker(*, una_vez: bool = False) -> None:
+    """Ejecuta un lote o espera entre lotes hasta SIGINT o SIGTERM."""
+    ajustes = get_settings()
+    verificar_configuracion(ajustes)
+    from src.database.postgresql.connection import engine
 
-    return processed_count
+    engine.echo = False
+
+    detener = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    senales = (signal.SIGINT, signal.SIGTERM)
+    for senal in senales:
+        loop.add_signal_handler(senal, detener.set)
+    try:
+        procesador, almacen, error_temporal = componer_procesador_outbox()
+        indices_verificados = False
+        while not detener.is_set():
+            try:
+                if not indices_verificados:
+                    await almacen.verificar_indices()
+                    indices_verificados = True
+                cantidad = await procesador.lote(
+                    ajustes.OUTBOX_BATCH_SIZE,
+                    ajustes.OUTBOX_CONCURRENCY,
+                    detener,
+                )
+                logger.info("lote_outbox procesados=%d", cantidad)
+            except (error_temporal, PyMongoError):
+                if una_vez:
+                    raise
+                logger.warning("lote_outbox no_confirmado")
+            if una_vez:
+                return
+            try:
+                await asyncio.wait_for(detener.wait(), timeout=ajustes.OUTBOX_POLL_SECONDS)
+            except TimeoutError:
+                pass
+    finally:
+        for senal in senales:
+            loop.remove_signal_handler(senal)
+        await close_mongo_connection()
+        await engine.dispose()
 
 
-async def run_outbox_worker(interval_seconds: float = 5.0) -> None:
-    """Bucle infinito para ejecutar el worker periódicamente."""
-    logger.info("Worker Outbox iniciado (intervalo: %s segundos)...", interval_seconds)
-    while True:
-        try:
-            await process_outbox_batch()
-        except Exception as e:
-            logger.error("Error en ciclo del outbox worker: %s", e)
-        await asyncio.sleep(interval_seconds)
+def main() -> int:
+    """Ejecuta el worker y sanitiza los fallos de configuración o arranque."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--once", action="store_true", help="Procesar un solo lote y salir")
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # Evitar que una configuración DEBUG habilite SQL o parámetros en este proceso.
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.CRITICAL)
+    try:
+        asyncio.run(run_outbox_worker(una_vez=args.once))
+    except (ValueError, ValidationError, PyMongoError):
+        logger.error("outbox no inició: destino, permisos o índices no verificables")
+        return 1
+    except Exception:
+        logger.error("outbox no completó su ciclo")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(run_outbox_worker())
-
+    raise SystemExit(main())

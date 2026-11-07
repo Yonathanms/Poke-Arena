@@ -20,6 +20,10 @@ dominio_imagenes = import_module(f"{_PAQUETE}.domain.imagen_model")
 puertos_imagenes = import_module(f"{_PAQUETE}.ports.imagen_ports")
 aplicacion_cartas = import_module(f"{_PAQUETE}.services.cartas_service")
 persistencia_creacion = import_module(f"{_PAQUETE}.adapters.sql_creacion_carta")
+proyeccion_domain = import_module(f"{_PAQUETE}.domain.proyeccion_carta")
+outbox_sql = import_module(f"{_PAQUETE}.adapters.sql_outbox_repository")
+outbox_mongo = import_module(f"{_PAQUETE}.adapters.mongo_card_projection")
+outbox_app = import_module(f"{_PAQUETE}.services.proyeccion_service")
 _orm = import_module(f"{_PAQUETE}.adapters.cartas_orm")
 _repositorio = import_module(f"{_PAQUETE}.adapters.sql_carta_repository")
 
@@ -76,3 +80,21 @@ def router_cartas(administrador: Any) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
     return modulo.crear_router(administrador, crear_servicio_crear_carta)
+
+
+def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
+    """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
+    from src.database.mongodb.connection import get_mongo_db
+    from src.database.postgresql.connection import AsyncSessionLocal
+    from src.shared.config import get_settings
+
+    ajustes = get_settings()
+    almacen = outbox_mongo.MongoProyeccionCartas(get_mongo_db()["cards_projection"])
+    repo = outbox_sql.SqlOutboxCartas(
+        AsyncSessionLocal, ajustes.OUTBOX_LEASE_SECONDS, ajustes.OUTBOX_MAX_ATTEMPTS
+    )
+    return (
+        outbox_app.ProcesadorOutbox(repo, almacen, ajustes.OUTBOX_RETRY_MAX_SECONDS),
+        almacen,
+        proyeccion_domain.OutboxTemporal,
+    )
