@@ -1,0 +1,79 @@
+{
+  "source_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d",
+  "excluded_revision": "009_location_extended_fields",
+  "removed_by_commit": "4843809f67c993a8682f60ad894863843133bbb8",
+  "migrations": [
+    {
+      "file": "001_initial_schema.py",
+      "revision": "001_initial_schema",
+      "down_revision": null,
+      "sha256": "7267457348d96b49e298771d2f2fb157ae30f2932253c9cb168d77ac7ec081f3",
+      "git_blob": "4a7b5b192487b656fcf3d86a0ea0afd2f441909d",
+      "last_change_commit": "76dd130c955b4ee22a02e3db644269bb76290a2b",
+      "introduced_commit": "76dd130c955b4ee22a02e3db644269bb76290a2b"
+    },
+    {
+      "file": "002_content_card_persistence.py",
+      "revision": "002_content_card_persistence",
+      "down_revision": "001_initial_schema",
+      "sha256": "271be9fdf6943d8ed2fa9204a296f76c39e3bc3b21013f246febc0e17b7dcd01",
+      "git_blob": "b48a372127099ca0714e2b4f1f8d4698a78e51b0",
+      "last_change_commit": "9e37ad5f3e1d1da5d97514ed9388a27e25659bf6",
+      "introduced_commit": "9e37ad5f3e1d1da5d97514ed9388a27e25659bf6"
+    },
+    {
+      "file": "003_creation_idempotency_outbox.py",
+      "revision": "003_creation_idempotency_outbox",
+      "down_revision": "002_content_card_persistence",
+      "sha256": "f78aa2beda4a2a93a23cf88a80e26624f1103325b6a76d3eccf32ec0d12890af",
+      "git_blob": "722ca904249f8ca93b5218ee9ffde782fae61e68",
+      "last_change_commit": "9e37ad5f3e1d1da5d97514ed9388a27e25659bf6",
+      "introduced_commit": "9e37ad5f3e1d1da5d97514ed9388a27e25659bf6"
+    },
+    {
+      "file": "004_processing_recovery.py",
+      "revision": "004_processing_recovery",
+      "down_revision": "003_creation_idempotency_outbox",
+      "sha256": "38c5ad63db575930bf2d6d3367753b65cc88d628d5dfa99aab60e8b96b4f9f12",
+      "git_blob": "352d3231eb89f1dd98f5a2724ec28fd2c39c402e",
+      "last_change_commit": "9e37ad5f3e1d1da5d97514ed9388a27e25659bf6",
+      "introduced_commit": "9e37ad5f3e1d1da5d97514ed9388a27e25659bf6"
+    },
+    {
+      "file": "005_identity_sessions.py",
+      "revision": "005_identity_sessions",
+      "down_revision": "004_processing_recovery",
+      "sha256": "4419bf950c6dffd4eef41afe8dc5b23df002b36953ff0cbfc99df51b9ec37e44",
+      "git_blob": "40e365244d301df60c3ce101ed1aa1df732f2351",
+      "last_change_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d",
+      "introduced_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d"
+    },
+    {
+      "file": "006_identity_local_test_provider.py",
+      "revision": "006_identity_local_test_provider",
+      "down_revision": "005_identity_sessions",
+      "sha256": "85d8a2d2f4e414c81cbac949ceaee59b0992efe4f23db8d5564b1a7c13cfe04a",
+      "git_blob": "ece54f5f9f241674d8cc25617446980298674a5d",
+      "last_change_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d",
+      "introduced_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d"
+    },
+    {
+      "file": "007_cards_without_image.py",
+      "revision": "007_cards_without_image",
+      "down_revision": "006_identity_local_test_provider",
+      "sha256": "d87d72b1b83e6f2f5a03d7827f109522012c4796cb95c10da58143fab47f3d03",
+      "git_blob": "a49380c02af417c7527774b875e7b72001f9dee3",
+      "last_change_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d",
+      "introduced_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d"
+    },
+    {
+      "file": "008_flexible_card_image_dimensions.py",
+      "revision": "008_flex_card_img_dims",
+      "down_revision": "007_cards_without_image",
+      "sha256": "2b6b27da4217f84b85afb37740bfc2a35b8acfbb03b0cd93015b1719625d2479",
+      "git_blob": "cf7c9a51ac6bf37933a60ab2b528b24d078c8dcb",
+      "last_change_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d",
+      "introduced_commit": "8a9e309fefd0cbd291b6d371180ddce4ed74338d"
+    }
+  ]
+}

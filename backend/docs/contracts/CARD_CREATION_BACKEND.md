@@ -4,13 +4,13 @@
 
 **Fecha:** 2026-11-06
 
-**Estado:** Entrega 1A completada con autorización explícita de recreación controlada y cuentas técnicas. Fase 0 y entregas 1B–3 no autorizadas.
+**Estado:** 1A cerrada; Entrega 1B.1 autorizada y validada: originales 001–008 recuperados y reproducibles en aislamiento. 1B.2 y etapas posteriores no autorizadas.
 
 **Historia de usuario:** 2.1.1 — Crear carta
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: Entrega 1A — Infraestructura Docker, autorizada explícitamente después de D.** Se permiten configuración, conexiones oficiales, pruebas y respaldo/restauración aislada; no cambios de tablas, modelos, migraciones, directorios, endpoints ni negocio. Se autorizó retirar exclusivamente los dos binds obsoletos, recrear servicios preservando datos/recursos y configurar usuarios técnicos; esto revoca la decisión anterior sobre credenciales. Cualquier discrepancia o cambio adicional que afecte datos/topología exige detenerse y solicitar autorización. No avanzar a 1B ni ejecutar fase 0 por esta autorización.
+> **Alcance vigente: exclusivamente Entrega 1B.1.** Recuperar originales hasta 008, ajustar configuración de mantenimiento y validar esquemas en instancia nueva aislada. No cambiar tablas/datos/roles/volúmenes existentes ni reiniciar servicios originales; no recuperar/aplicar 009, crear sucesoras/modelos ni avanzar a 1B.2. La autorización posterior de 1B.1 sustituye la restricción previa de recuperación pendiente sin reabrir operaciones de 1A.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -306,10 +306,10 @@ Las referencias `original_storage_key` y `thumbnail_storage_key` deberán resolv
 - `8a9e309` (2026-10-24) incorporó `008_flexible_card_image_dimensions.py`, revisión `008_flex_card_img_dims`, hija de `007_cards_without_image`.
 - 007 permitió cartas con `image_id` nulo; 008 relajó dimensiones/proporción.
 - `02a2b89` añadió `009_location_extended_fields`, posterior a 008 y ajena al alcance de Crear carta.
-- `4843809` (2026-11-05), incluido en HEAD auditado `988a567`, eliminó del árbol las revisiones 001–009 y la implementación anterior. Los archivos siguen recuperables en Git; `versions/` contiene solamente `.gitkeep`.
-- La base registra 008 y su esquema observado coincide con los cambios relevantes inspeccionados. No se conoce el ejecutor original ni se ha verificado la reproducción completa de la cadena.
+- `4843809` (2026-11-05), incluido en HEAD auditado `988a567`, eliminó del árbol las revisiones 001–009 y la implementación anterior. En la auditoría previa los archivos seguían recuperables en Git y `versions/` contenía solamente `.gitkeep`; 1B.1 recuperó ahora 001–008 sin modificaciones.
+- La base registra 008 y su esquema observado coincide con los cambios relevantes inspeccionados. No se conoce el ejecutor original. En 1B.1 se verificó la reproducción completa hasta 008 en bases aisladas y su correspondencia estructural con la fuente.
 
-**Orden obligatorio futuro:** recuperar los archivos históricos, revisar dependencias/imports, verificar la cadena en base aislada y contrastar esquema con 008. Evaluar 009 por separado sin aplicarla automáticamente ni alterar ubicaciones. Solo después proponer sucesoras mínimas sobre tablas existentes. No modificar revisiones ya aplicadas ni inventar una inicial sustituta. No usar `stamp head` para ocultar divergencias ni `autogenerate` con metadata vacía/incompleta.
+**Condición histórica satisfecha en 1B.1:** archivos recuperados, dependencias revisadas, cadena reproducida en bases aisladas y esquema contrastado con 008. Evaluar 009 por separado sin aplicarla automáticamente ni alterar ubicaciones. Solo con autorización posterior de 1B.2 se podrán evaluar ajustes o sucesoras sobre tablas existentes. No modificar revisiones ya aplicadas ni inventar una inicial sustituta. No usar `stamp head` para ocultar divergencias ni `autogenerate` con metadata vacía/incompleta.
 
 Los inicializadores de motores pueden administrar usuarios/bases, pero no duplicar DDL de Alembic. Respaldar y comprobar restauración antes de aplicar cambios autorizados sobre datos conservados.
 
@@ -408,9 +408,15 @@ Secretos aleatorios guardados únicamente en `.env` privado; URLs habilitadas tr
 
 Evidencia privada: respaldos originales en `docker-data/backups/1a-20261106/`; cierre en `docker-data/backups/1a-20261106-completion/`. Los respaldos preceden la rotación, por lo que una restauración futura debe reconciliar cuentas con `.env` bajo autorización. No se validó instalación en volúmenes vacíos. Ruff/Mypy e httpx declarados no están instalados; no se modificaron dependencias. El diagnóstico HTTP usó biblioteca estándar. Comandos y detalle en README.
 
+### 6.4 Resultado de 1B.1
+
+Ocho revisiones originales recuperadas desde `8a9e309`, con hashes/commits en `backend/alembic/history_manifest.json`; 009 excluida. Sin dependencias de código de negocio eliminado. Configuración `MigrationSettings` independiente de Mongo/API, URL explícita, rol no administrativo y guard de bases aisladas. Rutas nativas basadas en `%(here)s` y `path_separator=os` (Alembic >=1.16; probado con 1.20.1). No se importan ORM ni módulos con guiones; no se autoriza autogenerate, ni SQL offline de la cadena que inspecciona tablas.
+
+Reconstrucciones independientes desde raíz y backend hasta 008: 12 tablas, 103 columnas, 50 constraints, 27 índices, cuatro FKs, una función y un trigger; cero diferencias estructurales normalizadas con la fuente, excluyendo propietarios/ACL deliberadamente distintos. Suite final: 24 pruebas aprobadas, incluida integración real. Bases/servicios originales sin cambios; instancia de prueba detenida, volumen nuevo conservado. No se ejecutó Alembic sobre pokearena_db ni se cambiaron permisos de API. Informe, comandos y límites: [ALEMBIC_RECOVERY_1B1.md](ALEMBIC_RECOVERY_1B1.md).
+
 ## 7. Fases y criterios de aceptación
 
-Solo 1A cuenta con autorización actual; D está completada. La autorización específica de 1A no incluye fase 0 ni otras entregas. No avanzar automáticamente; recuperar/verificar historial sigue siendo condición previa a proponer sucesoras.
+La autorización vigente cubre solo 1B.1; D y 1A están completadas. La recuperación histórica antes denominada fase 0 se ejecutó como 1B.1 en aislamiento. No avanzar automáticamente a 1B.2 ni crear sucesoras.
 
 ### D — Actualización documental (completada)
 
@@ -418,7 +424,7 @@ Solo 1A cuenta con autorización actual; D está completada. La autorización es
 - Registrar decisiones aprobadas, hechos auditados, pendientes y fases sin confundirlos con implementación.
 - Comprobar coherencia entre ambos textos y alcance de archivos, sin pruebas que escriban datos.
 
-### 0 — Recuperación y verificación Alembic (pendiente de autorización)
+### 0 / 1B.1 — Recuperación y verificación Alembic (validada; informe complementario)
 
 - Recuperar revisiones del historial Git en `backend/alembic/versions/`, revisar dependencias y metadata sin modificar revisiones aplicadas.
 - Verificar cadena y reproducción en base aislada; contrastar estado 008 con esquema conservado y separar evaluación de 009 de ubicaciones.
@@ -431,7 +437,7 @@ Solo 1A cuenta con autorización actual; D está completada. La autorización es
 - **Aceptar solo con** configuración validada, correspondencia explícita de volúmenes, conexión/healthchecks adecuados, permisos mínimos y persistencia/restauración verificadas bajo escenario autorizado.
 - No crear tablas, endpoints, conexiones duplicadas ni procesos nuevos; no tocar frontend o worker.
 
-### 1B — Compatibilidad SQL (pendiente de autorización, después de 0)
+### 1B.2 — Compatibilidad SQL (pendiente de autorización posterior a 1B.1)
 
 - Proponer ajustes mínimos exclusivamente sobre tablas existentes y responsabilidades aprobadas; sin PK BIGINT, nombres nuevos paralelos ni reinicio de contadores.
 - La propuesta debe resolver únicamente pendientes autorizados, incluyendo discrepancia de imágenes si corresponde, con evaluación de datos y conservación histórica.
@@ -474,7 +480,7 @@ Las decisiones de §1.2 están aprobadas. Los siguientes detalles **no** lo est�
 
 | Pendiente | Condición previa / límite |
 |---|---|
-| Historial y sucesoras | Recuperar/verificar cadena y metadata antes de proponer cambios; no aplicar 009 por estar en Git. |
+| Sucesoras después de 1B.1 | Historial reproducido y comparado; cualquier ajuste requiere nueva autorización de 1B.2. No aplicar 009 por estar en Git. |
 | Imports con guiones | Estrategia documentada y aprobada; sin renombrar directorios ni modificar `sys.path` unilateralmente. |
 | Discrepancia ORM en notas oficiales | Mantener regla de dominio puro y mapeos en adaptadores de AGENTS/contrato; reconciliar la descripción antigua antes de implementar, preservando topología modular. |
 | Referencias SQL/GridFS | Resolver formato de storage keys, tipo de ID GridFS, base/bucket y compatibilidad con almacenamiento previo; no duplicar metadatos. |
@@ -497,7 +503,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** 1A completada; detenerse antes de otra fase o de un cambio adicional de topología/datos. Fase 0 permanece pendiente y debe completarse antes de proponer sucesoras de 1B. 1B, 1C, 2 y 3 requieren autorización independiente. El cierre de 1A no autoriza aplicar migraciones ni activar procesos.
+**Autorización vigente:** 1B.1 completada y validada en aislamiento; detenerse antes de 1B.2. La recuperación no autoriza cambiar bases existentes, crear sucesoras, ampliar permisos o activar procesos. 1B.2, 1C, 2 y 3 requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

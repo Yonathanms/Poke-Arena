@@ -249,3 +249,23 @@ curl --fail http://127.0.0.1:8000/api/v1/health
 ```
 
 El `.env` local ya tiene las cuentas verificadas. Un clon del repositorio no recibe secretos ni bases: debe completar su propia configuración y provisión autorizada; la plantilla vacía falla explícitamente.
+
+
+## Entrega 1B.1 — Historial Alembic recuperado
+
+Se recuperaron literalmente las revisiones 001–008 desde Git, sin incorporar 009 ni crear sucesoras. Las reconstrucciones independientes en bases vacías de una instancia PostgreSQL nueva alcanzaron `008_flex_card_img_dims` y coincidieron con la estructura activa: 12 tablas, 103 columnas, 50 restricciones y 27 índices. Las bases y los servicios originales no se modificaron.
+
+Alembic usa `MigrationSettings` y `MIGRATION_DATABASE_URL` explícita, con rol separado y sin dependencia de MongoDB o de la URL de API. En esta fase se permiten solo destinos `pokearena_alembic_*`; el guard también verifica identidad real y ausencia de administración antes del DDL. La plantilla deja esa URL vacía. No usar las credenciales de aplicación para migraciones.
+
+Los paths del INI son relativos a `%(here)s`; `path_separator=os` evita fragmentar la ruta del proyecto que contiene espacios. Por ello el mínimo de Alembic pasa a 1.16; la instalación usada es 1.20.1. No se añadieron librerías ni modelos.
+
+```bash
+# Desde raíz, sin conectar a bases:
+backend/.venv/bin/python -m alembic -c backend/alembic.ini history
+backend/.venv/bin/python -m alembic -c backend/alembic.ini heads
+backend/.venv/bin/python -m pytest -c backend/pyproject.toml backend/tests/test_infrastructure_config.py backend/tests/test_alembic_recovery.py -q
+```
+
+La integración requiere dos URLs privadas `ALEMBIC_TEST_URL_A/B` hacia bases nuevas vacías de una instancia aislada; sin ellas se omite esa prueba y se informa. En la validación real pasaron las **24 pruebas**, incluida integración. No se limpia una base existente para repetir: crear destinos aislados nuevos. La instancia `pokearena-1b1-alembic-20261106` queda detenida, con volumen/red propios conservados; el puerto aleatorio publicado puede cambiar al iniciarla y las URLs de prueba deben releerse de Docker.
+
+Procedencia, revisiones, comandos de reconstrucción, comparación y límites en [el informe 1B.1](backend/docs/contracts/ALEMBIC_RECOVERY_1B1.md). No se ejecutó Alembic sobre `pokearena_db`, ni stamp, downgrade, generación automática o migraciones sucesoras. No avanzar a 1B.2 sin autorización.

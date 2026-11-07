@@ -6,11 +6,26 @@ from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
-class Settings(BaseSettings):
+class EnvironmentSettings(BaseSettings):
+    """Comparte ubicación de .env, protección de errores y timeout sin abrir clientes."""
+
+    DB_CONNECT_TIMEOUT_SECONDS: int = Field(default=5, ge=1, le=60)
+
+    model_config = SettingsConfigDict(
+        env_file=REPOSITORY_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        validate_default=True,
+        hide_input_in_errors=True,
+    )
+
+
+class Settings(EnvironmentSettings):
     """Lee el .env de raíz con prioridad para variables del proceso.
 
     Las URLs son obligatorias: no se usan credenciales administrativas por defecto.
@@ -28,7 +43,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(repr=False, exclude=True)
     MONGO_URL: str = Field(repr=False, exclude=True)
     MONGO_DB: str = "pokearena_catalog"
-    DB_CONNECT_TIMEOUT_SECONDS: int = Field(default=5, ge=1, le=60)
 
     # Almacenamiento de imágenes
     UPLOAD_DIR: str = "./uploads"
@@ -79,13 +93,29 @@ class Settings(BaseSettings):
         """Devuelve orígenes CORS normalizados sin entradas vacías."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
-    model_config = SettingsConfigDict(
-        env_file=REPOSITORY_ROOT / ".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        validate_default=True,
-        hide_input_in_errors=True,
-    )
+
+class MigrationSettings(EnvironmentSettings):
+    """Configura Alembic sin cargar URLs/clientes de aplicación o MongoDB.
+
+    En 1B.1 solo permite bases de validación con prefijo pokearena_alembic_.
+    La URL es explícita, sin fallback a DATABASE_URL; se rechaza el rol de API.
+    El rol real y sus atributos también se comprueban antes del DDL en env.py.
+    """
+
+    MIGRATION_DATABASE_URL: str = Field(repr=False, exclude=True)
+
+    @field_validator("MIGRATION_DATABASE_URL")
+    @classmethod
+    def validate_migration_target(cls, value: str) -> str:
+        """Rechaza drivers, roles y destinos ajenos al aislamiento autorizado en 1B.1."""
+        if not value.startswith("postgresql+asyncpg://"):
+            raise ValueError("Configure MIGRATION_DATABASE_URL con el driver asyncpg")
+        url = make_url(value)
+        if not url.username or url.username == "poke_api_user":
+            raise ValueError("Alembic requiere un rol de migración separado de la API")
+        if not url.database or not url.database.startswith("pokearena_alembic_"):
+            raise ValueError("1B.1 solo permite bases aisladas pokearena_alembic_*")
+        return value
 
 
 @lru_cache
