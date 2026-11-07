@@ -16,9 +16,11 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Ciclo de vida de la aplicación FastAPI."""
-    yield
-    close_mongo_connection()
-    await engine.dispose()
+    try:
+        yield
+    finally:
+        await close_mongo_connection()
+        await engine.dispose()
 
 
 app = FastAPI(
@@ -65,8 +67,8 @@ async def health_check() -> dict[str, Any]:
         mongo_db = get_mongo_db()
         await mongo_db.command("ping")
         health_status["databases"]["mongodb"] = "connected"
-    except Exception as e:
+    except Exception:
         health_status["status"] = "degraded"
-        health_status["databases"]["mongodb"] = f"error: {e}"
+        health_status["databases"]["mongodb"] = "error: conexión MongoDB no disponible"
 
     return health_status

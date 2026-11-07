@@ -3,47 +3,43 @@
 import asyncio
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
 
 from src.shared.config import get_settings
 
-settings = get_settings()
-
-_clients: dict[int, AsyncIOMotorClient[Any]] = {}
+_clients: dict[asyncio.AbstractEventLoop, AsyncMongoClient[dict[str, Any]]] = {}
 
 
-def get_mongo_client() -> AsyncIOMotorClient[Any]:
-    """Reutiliza cliente Motor del loop actual sin abrir conexiones alternativas.
+def get_mongo_client() -> AsyncMongoClient[dict[str, Any]]:
+    """Reutiliza un cliente PyMongo Async para el event loop que lo solicita.
 
     La conexión es diferida; ping/operaciones propagan errores de autenticación
     o disponibilidad dentro del timeout configurado. No crea colecciones/usuarios.
     """
-    try:
-        loop = asyncio.get_running_loop()
-        loop_id = id(loop)
-    except RuntimeError:
-        loop_id = 0
-
-    if loop_id not in _clients:
+    loop = asyncio.get_running_loop()
+    if loop not in _clients:
+        settings = get_settings()
         timeout_ms = settings.DB_CONNECT_TIMEOUT_SECONDS * 1000
-        _clients[loop_id] = AsyncIOMotorClient(
+        _clients[loop] = AsyncMongoClient(
             settings.MONGO_URL,
             serverSelectionTimeoutMS=timeout_ms,
             connectTimeoutMS=timeout_ms,
+            timeoutMS=timeout_ms,
             appname="pokearena-backend",
         )
-    return _clients[loop_id]
+    return _clients[loop]
 
 
-def get_mongo_db() -> AsyncIOMotorDatabase[Any]:
+def get_mongo_db() -> AsyncDatabase[dict[str, Any]]:
     """Devuelve la base configurada sin crearla ni modificar sus colecciones."""
     client = get_mongo_client()
-    return client[settings.MONGO_DB]
+    return client[get_settings().MONGO_DB]
 
 
-def close_mongo_connection() -> None:
-    """Cierra todos los clientes y vacía el cache; permite llamadas repetidas."""
-    for client in _clients.values():
-        client.close()
-    _clients.clear()
+async def close_mongo_connection() -> None:
+    """Cierra el cliente del loop propietario. Admite llamadas repetidas."""
+    client = _clients.pop(asyncio.get_running_loop(), None)
+    if client is not None:
+        await client.close()
 

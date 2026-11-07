@@ -16,6 +16,8 @@ from src.shared.outbox import OutboxEventORM
 _PAQUETE = f"{__package__}.gestion-cartas"
 dominio_cartas = import_module(f"{_PAQUETE}.domain.carta_model")
 puertos_cartas = import_module(f"{_PAQUETE}.ports.cartas_ports")
+dominio_imagenes = import_module(f"{_PAQUETE}.domain.imagen_model")
+puertos_imagenes = import_module(f"{_PAQUETE}.ports.imagen_ports")
 _orm = import_module(f"{_PAQUETE}.adapters.cartas_orm")
 _repositorio = import_module(f"{_PAQUETE}.adapters.sql_carta_repository")
 
@@ -36,4 +38,22 @@ def crear_repositorio_cartas(session: AsyncSession) -> Any:
     verificado por Mypy con su nombre de módulo y por pruebas de composición.
     """
     return _repositorio.SqlCartaRepository(session)
+
+
+def crear_procesador_imagenes() -> Any:
+    """Compone el procesador local sin requerir un event loop ni bases."""
+    modulo = import_module(f"{_PAQUETE}.adapters.imagen_carta_adapter")
+    return modulo.ProcesadorImagenPillow()
+
+
+def crear_almacen_imagenes() -> Any:
+    """Compone GridFS en el loop activo mediante el cliente oficial."""
+    from gridfs import AsyncGridFSBucket
+
+    from src.database.mongodb.connection import get_mongo_db
+    from src.shared.config import get_settings
+
+    modulo = import_module(f"{_PAQUETE}.adapters.mongo_carta_repository")
+    bucket = AsyncGridFSBucket(get_mongo_db(), bucket_name=get_settings().MONGO_GRIDFS_BUCKET)
+    return modulo.AlmacenImagenGridFS(bucket, crear_procesador_imagenes())
 

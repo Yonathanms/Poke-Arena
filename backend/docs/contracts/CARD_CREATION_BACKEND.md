@@ -4,13 +4,13 @@
 
 **Fecha:** 2026-11-06
 
-**Estado:** 1A y 1B.1 cerradas. Autorizada exclusivamente 1B.2A: ORM/persistencia del esquema 008 y pruebas aisladas, sin cambiar PostgreSQL original. 1B.2B y etapas posteriores pendientes.
+**Estado:** 1A, 1B.1 y 1B.2A cerradas. 1B.2B y 1C validadas en aislamiento. La base original permanece en 008.
 
 **Historia de usuario:** 2.1.1 — Crear carta
 
 **Feature:** 2.1 — Catálogo de Cartas
 
-> **Alcance vigente: exclusivamente Entrega 1B.2A.** Representar las seis tablas existentes y preparar persistencia asíncrona, sin implementar Crear carta completo. Reproducir 001–008 únicamente en nuevas bases aisladas para pruebas. No cambiar fuentes, sucesoras, permisos, endpoints, GridFS ni workers. Importlib aprobado exclusivamente en composición con imports relativos internos; sin renombrar carpetas ni modificar `sys.path`.
+> **Alcance vigente: Entrega 1C en aislamiento.** Validación, miniatura WebP, almacenamiento GridFS y comprobación de integridad. El despliegue sobre los servicios originales y la coordinación de Crear Carta en 1D requieren autorización independiente.
 
 **Base de información:** auditoría del repositorio, historial Git, esquema PostgreSQL y metadatos Docker/MongoDB. Los hechos de auditoría son una instantánea que debe revalidarse antes de implementar; no representan pruebas de aceptación del sistema completo. Esta versión sustituye las propuestas incompatibles de v1.2: tablas paralelas, IDs BIGINT, tipos largos y colección propia de metadatos MongoDB.
 
@@ -295,7 +295,7 @@ Conservar UNIQUE `(actor_id, operation, idempotency_key)` y las respuestas almac
 
 Estados existentes: `PENDING`, `PROCESSING`, `RETRY_PENDING`, `READY`, `FAILED`. Preservar su significado; `RETRY_PENDING` es recuperable, no publicable. `READY` exige metadatos de miniatura WebP 200x280 y referencia no nula; además, el futuro adaptador debe verificar ambos archivos reales antes de confirmar disponibilidad.
 
-El esquema valida original PNG/JPEG/WebP, hash hexadecimal de 64 caracteres y tamaño 1–5 000 000 bytes. **Discrepancia pendiente:** desde 008 permite mínimo 300x420 y tolerancia de proporción; el requisito funcional sigue siendo mínimo 600x840 y 5:7 exacto. No ejecutar downgrade ni modificar 008 para corregirlo. Tras recuperar/verificar historial, evaluar datos y proponer una sucesora si corresponde.
+El esquema valida original PNG/JPEG/WebP, hash hexadecimal de 64 caracteres y tamaño 1–5 000 000 bytes. **Diferencia entre revisiones:** la base original en 008 permite mínimo 300x420 y tolerancia de proporción. La sucesora 1B.2B exige mínimo 600x840, proporción exacta 5:7 y tamaño y dimensiones de miniatura presentes en READY. El inventario y la validación están en [SCHEMA_ALIGNMENT_1B2B.md](SCHEMA_ALIGNMENT_1B2B.md).
 
 Las referencias `original_storage_key` y `thumbnail_storage_key` deberán resolver archivos GridFS. **Pendiente:** formato, tipo de ID GridFS, compatibilidad con claves locales previas, integridad y transición. No se aprueba añadir columnas ni otra tabla de metadatos. Los metadatos internos obligatorios de GridFS se usan técnicamente sin convertirlos en una segunda autoridad de estado de negocio.
 
@@ -327,7 +327,7 @@ Los inicializadores de motores pueden administrar usuarios/bases, pero no duplic
 
 No crear una colección propia Mongo `card_images` ni otro catálogo de metadatos de imágenes. Las colecciones internas `<bucket>.files` y `<bucket>.chunks` forman parte de GridFS y deben gestionarse mediante su API.
 
-**Pendiente:** nombre definitivo del bucket (v1.2 proponía `card_assets`) y si reside en la base Mongo existente u otra base local. No imponer `poke_arena_media`, renombrar la base existente ni crear otra conexión. Reutilizar `backend/src/database/mongodb/connection.py` y el adaptador oficial de catálogo; separar responsabilidades internamente sin duplicar clientes.
+**Diseño 1C validado en aislamiento.** Usar `MONGO_GRIDFS_BUCKET=card_assets` en `MONGO_DB` mediante la conexión oficial PyMongo Async. Las referencias son cadenas `gridfs:<ObjectId>`. La ampliación de permisos originales y cualquier transición de referencias previas requieren revisión separada. Véase [GRIDFS_IMAGE_STORAGE_1C.md](GRIDFS_IMAGE_STORAGE_1C.md).
 
 ### 5.2 Proyección y Outbox conservados, sin activación nueva
 
@@ -346,7 +346,7 @@ La auditoría encontró `pokearena_catalog.cards_projection` con índices `_id`,
 5. No cargar binarios en listados. Diseñar acceso controlado por backend en fase API.
 6. Marcar `catalog_card_images.state=READY` únicamente tras verificar existencia y recuperación de ambos archivos; una carta sin imagen permanece no disponible para jugadores.
 
-Estos son requisitos, no garantías ya implementadas. El adaptador de imagen actual contiene solo una docstring.
+Los adaptadores 1C validan, generan y verifican ambos archivos. La coordinación del estado SQL y la publicación corresponden a 1D.
 
 ### 5.4 Consistencia entre motores: invariantes y decisiones pendientes
 
@@ -416,7 +416,7 @@ Reconstrucciones independientes desde raíz y backend hasta 008: 12 tablas, 103 
 
 ## 7. Fases y criterios de aceptación
 
-La autorización vigente cubre solo 1B.2A; D, 1A y 1B.1 están completadas. No avanzar a 1B.2B ni crear sucesoras.
+La autorización vigente cubre 1C en bases aisladas. La aplicación de la sucesora 1B.2B a la base original sigue pendiente.
 
 ### D — Actualización documental (completada)
 
@@ -444,14 +444,14 @@ La autorización vigente cubre solo 1B.2A; D, 1A y 1B.1 están completadas. No a
 - Verificar esquema real, relaciones, restricciones, sesiones, transacciones y ausencia de duplicados en pruebas aisladas preparadas con originales 001–008.
 - Metadata parcial: no habilitar autogenerate, DDL ORM ni cambios de esquema. Informe y pruebas en [ORM_PERSISTENCE_1B2A.md](ORM_PERSISTENCE_1B2A.md).
 
-### 1B.2B — Compatibilidad SQL/sucesoras (pendiente de autorización)
+### 1B.2B — Compatibilidad SQL/sucesoras (validada en aislamiento)
 
 - Proponer ajustes mínimos exclusivamente sobre tablas existentes y responsabilidades aprobadas; sin PK BIGINT, nombres nuevos paralelos ni reinicio de contadores.
 - La propuesta debe resolver únicamente pendientes autorizados, incluyendo discrepancia de imágenes si corresponde, con evaluación de datos y conservación histórica.
 - Aplicar sucesoras solo después de revisar y autorizar su contenido y destino. ORM en adaptadores conforme a la regla de dominio puro; no crear una arquitectura alternativa.
 - **Aceptar solo con** pruebas aisladas de restricciones, FKs, seeds, concurrencia e idempotencia pertinentes; verificar IDs, códigos, contadores, referencias y conservación antes/después. No afirmar aceptación por mera generación de migración.
 
-### 1C — Integración técnica GridFS (pendiente de autorización)
+### 1C — Integración técnica GridFS (validada en aislamiento)
 
 - Tras aprobar base/bucket y representación de referencias, reutilizar conexión Mongo y adaptadores oficiales; SQL sigue siendo autoridad de imágenes.
 - **Aceptar solo con** almacenamiento/recuperación de original y miniatura en entorno aislado, referencias verificables, persistencia local y preparación idempotente sin colección propia de metadatos.
@@ -487,7 +487,7 @@ Las decisiones de §1.2 están aprobadas. Los siguientes detalles **no** lo est�
 
 | Pendiente | Condición previa / límite |
 |---|---|
-| Sucesoras después de 1B.1 | Historial reproducido y comparado; cualquier ajuste SQL requiere nueva autorización de 1B.2B. No aplicar 009 por estar en Git. |
+| Sucesoras después de 1B.1 | Historial reproducido y comparado; sucesora de imágenes validada en aislamiento. La aplicación a la base original requiere autorización independiente. 009 de ubicaciones sigue excluida. |
 | Imports con guiones | Aprobado en 1B.2A: importlib solo en composición, imports relativos internos, sin renombrar ni modificar sys.path; probar composición/registro y documentar límites. |
 | Discrepancia ORM en notas oficiales | Resuelta en 1B.2A por autorización explícita: dominio puro y mapeos en adaptadores; anotaciones documentales corregidas, topología preservada. |
 | Referencias SQL/GridFS | Resolver formato de storage keys, tipo de ID GridFS, base/bucket y compatibilidad con almacenamiento previo; no duplicar metadatos. |
@@ -510,7 +510,7 @@ Los requisitos de imagen estricta, unicidad, idempotencia, habilidad válida, au
 
 Toda implementación futura debe entregar archivos modificados, decisiones, comandos exactos, pruebas realmente ejecutadas, riesgos y pendientes. Mantener docstrings, tipos, SOLID, DRY y documentación actualizada; actualizar README de raíz cuando cambie la ejecución. No anunciar como implementado o probado lo que solo está descrito aquí.
 
-**Autorización vigente:** exclusivamente 1B.2A, ORM/persistencia sin cambiar esquema ni datos originales. Detenerse antes de 1B.2B. No crear sucesoras, ampliar permisos o activar procesos. 1B.2B, 1C, 2 y 3 requieren autorización independiente.
+**Autorización vigente:** exclusivamente 1C en aislamiento. La aplicación a las bases originales y 1D requieren autorización independiente.
 
 ## 11. Documentación técnica de referencia
 

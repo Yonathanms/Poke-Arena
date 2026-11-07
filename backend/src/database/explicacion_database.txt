@@ -17,8 +17,7 @@ los dos motores de base de datos que corren en Docker:
     la conexión pura.
 
 * mongodb/
-  - connection.py: Configura el cliente de Motor (driver asíncrono oficial
-    de MongoDB) y provee get_mongo_db() para acceder a la base de datos
+  - connection.py: Configura el cliente de PyMongo Async compartido por loop y provee get_mongo_db() para acceder a la base de datos
     de catálogo.
 
 * outbox_worker.py:

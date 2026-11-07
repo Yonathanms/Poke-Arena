@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from re import fullmatch
 from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator
@@ -43,6 +44,7 @@ class Settings(EnvironmentSettings):
     DATABASE_URL: str = Field(repr=False, exclude=True)
     MONGO_URL: str = Field(repr=False, exclude=True)
     MONGO_DB: str = "pokearena_catalog"
+    MONGO_GRIDFS_BUCKET: str = "card_assets"
 
     # Almacenamiento de imágenes
     UPLOAD_DIR: str = "./uploads"
@@ -57,6 +59,14 @@ class Settings(EnvironmentSettings):
     ALLOWED_ORIGINS: str = (
         "http://localhost:5173,http://localhost:3000,http://localhost:80,http://localhost"
     )
+
+    @field_validator("MONGO_GRIDFS_BUCKET")
+    @classmethod
+    def validate_gridfs_bucket(cls, value: str) -> str:
+        """Acota el nombre que forma las colecciones internas del bucket."""
+        if not fullmatch(r"[a-z][a-z0-9_]{0,47}", value):
+            raise ValueError("Nombre de bucket GridFS inválido")
+        return value
 
     @field_validator("DATABASE_URL", "MONGO_URL")
     @classmethod

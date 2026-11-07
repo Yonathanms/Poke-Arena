@@ -307,3 +307,26 @@ validar la persistencia sin ejecutar migraciones, define solo
 `ORM_TEST_DATABASE_URL` hacia una copia aislada ya en la revisión 008. La suite
 de corrección obtuvo **84 aprobadas y una omitida** en PostgreSQL 16. La omisión
 corresponde a la reconstrucción histórica de Alembic.
+
+## Entrega 1B.2B — Integridad de metadatos de imágenes
+
+La cabeza local es `1b2b_card_image_integrity`. El ORM de 1B.2B se verifica
+contra una base aislada en esa revisión mediante `ORM_TEST_DATABASE_URL`.
+Para comprobar upgrade, rollback, downgrade y preservación de filas, proporcionar
+también `SCHEMA_ALIGNMENT_TEST_URL` hacia una copia aislada descartable en 008.
+La base original sigue en 008 y el guard de Alembic impide migrarla.
+Consulta el [inventario, pruebas y plan de aplicación](backend/docs/contracts/SCHEMA_ALIGNMENT_1B2B.md).
+
+## Entrega 1C — Medios en GridFS
+
+El backend compone un procesador Pillow y un almacén PyMongo Async sobre la
+conexión MongoDB existente. `MONGO_GRIDFS_BUCKET` selecciona el bucket y
+su valor inicial es `card_assets`. El procesamiento acepta hasta 5 000 000
+bytes por original, verifica la proporción 5:7 y genera WebP de 200 × 280.
+
+Las pruebas unitarias funcionan sin bases. Las pruebas reales usan
+`MONGO_GRIDFS_TEST_URL` hacia MongoDB 7 aislado y
+`ORM_TEST_DATABASE_URL` hacia PostgreSQL aislado en 1B.2B.
+El [informe 1C](backend/docs/contracts/GRIDFS_IMAGE_STORAGE_1C.md) documenta
+la configuración, los permisos del bucket, las pruebas y la integración
+pendiente en 1D.
