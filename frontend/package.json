@@ -1,3 +1,4 @@
+
 {
   "name": "pokearena-frontend",
   "private": true,
@@ -7,7 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -29,7 +30,7 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.4.5",
-    "typescript-eslint": "^8.72.0",
+    "typescript-eslint": "^8.72.1",
     "vite": "^5.3.0"
   }
 }
