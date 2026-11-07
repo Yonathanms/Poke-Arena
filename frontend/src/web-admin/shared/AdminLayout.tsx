@@ -6,12 +6,14 @@
  * - Mostrar el estado de autenticación (`PLATFORM_ADMIN`), el identificador público del
  *   administrador (`userId`) y el tiempo de sesión restante (`MM:SS`).
  * - Exponer la acción de cierre de sesión delegada al hook/servicio correspondiente.
- * - Alojar el área principal de contenido sin realizar peticiones HTTP ni manejar tokens.
+ * - Alojar la pantalla administrativa de Catálogo (`CreateCardScreen` por defecto) sin
+ *   realizar peticiones HTTP ni exponer tokens en el DOM.
  */
 
 import React from "react";
-import { Clock, Layers, Loader2, LogOut, ShieldCheck, Sparkles } from "lucide-react";
+import { Clock, Loader2, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import type { ActiveSessionSnapshot } from "../modules/auth/types/auth.types";
+import { CreateCardScreen } from "../modules/catalogo/screens/CreateCardScreen";
 
 export interface AdminLayoutProps {
   readonly session: ActiveSessionSnapshot;
@@ -120,49 +122,7 @@ export function AdminLayout({
 
       {/* Área principal de contenido */}
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        {children ?? (
-          <section
-            aria-labelledby="admin-workspace-heading"
-            className="rounded-2xl glass-card p-6 sm:p-8 border border-arena-border"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-arena-border/60 pb-6">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400">
-                <Layers className="h-6 w-6" aria-hidden="true" />
-              </div>
-              <div>
-                <h2
-                  id="admin-workspace-heading"
-                  className="text-xl font-bold tracking-tight text-white"
-                >
-                  Módulo de Catálogo — Crear Carta (2.1.1)
-                </h2>
-                <p className="mt-1 text-sm text-slate-300">
-                  Sesión administrativa verificada con permisos <code className="font-mono text-blue-300">PLATFORM_ADMIN</code>.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-arena-border bg-arena-surface/60 p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-400">
-                  Estado de Autenticación (Etapa F2)
-                </h3>
-                <p className="mt-1.5 text-sm text-slate-300">
-                  El control de sesiones opacas en memoria, la verificación de rol y la revocación explícita contra FastAPI están activos.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-arena-border bg-arena-surface/60 p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Próximas Entregas (Etapas F3 y F4)
-                </h3>
-                <p className="mt-1.5 text-sm text-slate-300">
-                  El selector de habilidades, el validador de imágenes 5:7 y el formulario interactivo de creación de cartas se integrarán en este espacio de trabajo en las etapas F3 y F4.
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
+        {children ?? <CreateCardScreen />}
       </main>
     </div>
   );

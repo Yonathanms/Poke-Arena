@@ -3,18 +3,19 @@
  *
  * Responsabilidades:
  * 1. Coordinar el ciclo de autenticación administrativa a través de `useAdminSession`.
- * 2. Restringir el acceso a `AdminLayout` exclusivamente cuando existe una sesión activa
- *    con rol `PLATFORM_ADMIN`.
+ * 2. Restringir el acceso a `AdminLayout` y `CreateCardScreen` exclusivamente cuando
+ *    existe una sesión activa con rol `PLATFORM_ADMIN`.
  * 3. Si una sesión expira o se invalida por `401` después de que el administrador ya
  *    había ingresado al área de trabajo, mantener el árbol del área de trabajo montado
  *    en memoria (oculto e inerte con `hidden` / `aria-hidden`) mientras presenta el
- *    formulario de reautenticación, evitando destruir borradores futuros de Crear Carta (F4)
- *    sin mostrar contenido protegido ni conservar tokens en `localStorage`.
+ *    formulario de reautenticación, preservando el borrador de Crear Carta y cualquier
+ *    `Idempotency-Key` pendiente sin exponer contenido protegido ni usar `localStorage`.
  */
 
 import React, { useEffect, useState } from "react";
 import { AdminLoginForm } from "./web-admin/modules/auth/components/AdminLoginForm";
 import { useAdminSession } from "./web-admin/modules/auth/hooks/useAdminSession";
+import { CreateCardScreen } from "./web-admin/modules/catalogo/screens/CreateCardScreen";
 import { AdminLayout } from "./web-admin/shared/AdminLayout";
 
 export interface AppProps {
@@ -54,6 +55,8 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
     hasEnteredWorkspace &&
     (lastInvalidationReason === "expired" || lastInvalidationReason === "unauthorized_401");
 
+  const workspaceContent = children ?? <CreateCardScreen />;
+
   return (
     <div className="min-h-screen bg-arena-bg text-slate-100">
       {/* Vista protegida activa únicamente con sesión vigente y rol PLATFORM_ADMIN */}
@@ -64,14 +67,14 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
           isLoggingOut={isLoggingOut}
           onLogout={logout}
         >
-          {children}
+          {workspaceContent}
         </AdminLayout>
       )}
 
       {/* Preservación inerte del contenedor de trabajo durante reautenticación por expiración */}
-      {preserveWorkspaceInBackground && children && (
+      {preserveWorkspaceInBackground && (
         <div hidden aria-hidden="true" data-testid="preserved-workspace-container">
-          {children}
+          {workspaceContent}
         </div>
       )}
 
