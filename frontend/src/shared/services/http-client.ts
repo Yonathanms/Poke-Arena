@@ -16,8 +16,13 @@
 /** Proveedor de lectura del token Bearer actual. */
 export type HttpAccessTokenProvider = () => string | null;
 
-/** Callback ejecutado cuando una ruta protegida responde `401 Unauthorized`. */
-export type HttpUnauthorizedHandler = () => void;
+/**
+ * Callback ejecutado cuando una ruta protegida responde `401 Unauthorized`.
+ * Recibe el token exacto usado en esa solicitud para que el almacén de sesión
+ * solo invalide si ese token sigue siendo la sesión activa (evitando condiciones
+ * de carrera con respuestas 401 tardías tras una reautenticación).
+ */
+export type HttpUnauthorizedHandler = (rejectedToken?: string | null) => void;
 
 const DEFAULT_API_PREFIX = "/api/v1";
 const IDEMPOTENCY_KEY_PATTERN = /^[!-+\x2D-~]{1,128}$/;
@@ -183,8 +188,10 @@ function isRfc7807Payload(payload: unknown): payload is Rfc7807ProblemDetails {
 function prepareHeadersAndBody(options: ApiRequestOptions): {
   readonly headers: Headers;
   readonly body: BodyInit | undefined;
+  readonly usedAccessToken: string | null;
 } {
   const headers = new Headers();
+  let usedAccessToken: string | null = null;
 
   if (options.headers) {
     for (const [key, value] of Object.entries(options.headers)) {
@@ -204,6 +211,7 @@ function prepareHeadersAndBody(options: ApiRequestOptions): {
         title: "Unauthorized",
       });
     }
+    usedAccessToken = token;
     headers.set("Authorization", `Bearer ${token}`);
   }
 
@@ -221,23 +229,23 @@ function prepareHeadersAndBody(options: ApiRequestOptions): {
 
   const rawBody = options.body;
   if (rawBody === undefined || rawBody === null) {
-    return { headers, body: undefined };
+    return { headers, body: undefined, usedAccessToken };
   }
 
   if (isFormDataBody(rawBody)) {
     // Nunca fijar Content-Type manualmente en FormData: el navegador debe generar el boundary.
     headers.delete("Content-Type");
-    return { headers, body: rawBody };
+    return { headers, body: rawBody, usedAccessToken };
   }
 
   if (isPlainJsonRecord(rawBody)) {
     if (!headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
-    return { headers, body: JSON.stringify(rawBody) };
+    return { headers, body: JSON.stringify(rawBody), usedAccessToken };
   }
 
-  return { headers, body: rawBody as BodyInit };
+  return { headers, body: rawBody as BodyInit, usedAccessToken };
 }
 
 async function parseErrorResponse(response: Response): Promise<ApiHttpError> {
@@ -284,7 +292,7 @@ export async function requestApiWithMeta<T>(
   const baseUrl = options.baseUrl ?? DEFAULT_API_PREFIX;
   const url = buildUrl(endpoint, baseUrl);
   const requiresAuth = options.requiresAuth ?? true;
-  const { headers, body } = prepareHeadersAndBody(options);
+  const { headers, body, usedAccessToken } = prepareHeadersAndBody(options);
 
   let response: Response;
   try {
@@ -310,7 +318,7 @@ export async function requestApiWithMeta<T>(
   if (!response.ok) {
     if (response.status === 401 && requiresAuth) {
       const handleUnauthorized = options.onUnauthorized ?? defaultUnauthorizedHandler;
-      handleUnauthorized();
+      handleUnauthorized(usedAccessToken);
     }
     throw await parseErrorResponse(response);
   }

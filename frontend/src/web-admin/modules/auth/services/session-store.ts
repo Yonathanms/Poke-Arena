@@ -101,8 +101,19 @@ export function clearPlatformSession(reason: SessionInvalidationReason = "manual
 
 /**
  * Invalida la sesión cuando el backend responde `401 Unauthorized`.
+ * Si se indica `rejectedToken`, solo invalida la sesión en memoria cuando coincide
+ * con el token activo actual, impidiendo que una respuesta 401 tardía de una sesión
+ * anterior destruya una sesión nueva recién autenticada.
  */
-export function invalidatePlatformSessionOnUnauthorized(): void {
+export function invalidatePlatformSessionOnUnauthorized(rejectedToken?: string | null): void {
+  if (
+    rejectedToken !== undefined &&
+    rejectedToken !== null &&
+    currentRecord !== null &&
+    currentRecord.accessToken !== rejectedToken
+  ) {
+    return;
+  }
   clearPlatformSession("unauthorized_401");
 }
 

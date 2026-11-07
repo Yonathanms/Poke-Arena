@@ -144,3 +144,35 @@ test("distingue el rol PLAYER de PLATFORM_ADMIN y valida el formato de Bearer op
   assert.equal(isValidOpaqueBearerFormat(VALID_OPAQUE_TOKEN), true);
   assert.equal(isValidOpaqueBearerFormat("short-token"), false);
 });
+
+test("ignora una respuesta 401 tardía de un token antiguo si ya se estableció una sesión nueva", () => {
+  const OLD_TOKEN = "OLD_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm"; // 43 chars
+  const NEW_TOKEN = "NEW_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm"; // 43 chars
+
+  setPlatformSession({
+    access_token: OLD_TOKEN,
+    token_type: "Bearer",
+    expires_in: 900,
+    user_id: "admin-001",
+    role: "PLATFORM_ADMIN",
+  });
+
+  // El administrador inicia una nueva sesión antes de que regrese un 401 viejo en vuelo
+  setPlatformSession({
+    access_token: NEW_TOKEN,
+    token_type: "Bearer",
+    expires_in: 900,
+    user_id: "admin-001",
+    role: "PLATFORM_ADMIN",
+  });
+
+  // Llega el 401 tardío asociado a OLD_TOKEN: NO debe invalidar NEW_TOKEN
+  invalidatePlatformSessionOnUnauthorized(OLD_TOKEN);
+  assert.equal(getPlatformAccessToken(), NEW_TOKEN);
+  assert.equal(hasActivePlatformAdminSession(), true);
+
+  // Si el 401 corresponde a NEW_TOKEN, sí invalida la sesión actual
+  invalidatePlatformSessionOnUnauthorized(NEW_TOKEN);
+  assert.equal(getPlatformAccessToken(), null);
+  assert.equal(hasActivePlatformAdminSession(), false);
+});

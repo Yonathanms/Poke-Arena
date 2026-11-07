@@ -61,3 +61,24 @@ export interface SessionChangeEvent {
   readonly session: ActiveSessionSnapshot | null;
   readonly reason?: SessionInvalidationReason;
 }
+
+/**
+ * Estados de alto nivel del ciclo de autenticación en el portal administrativo.
+ */
+export type AdminAuthStatus =
+  | "unauthenticated"
+  | "authenticating"
+  | "authenticated"
+  | "expired";
+
+/**
+ * Resultado del cierre de sesión (`DELETE /api/v1/identity/session`).
+ * Indica explícitamente si la revocación remota en el servidor pudo verificarse
+ * (`204 No Content`), aunque la credencial en memoria siempre se limpia localmente.
+ */
+export interface LogoutResult {
+  readonly localSessionCleared: true;
+  readonly remoteRevocationConfirmed: boolean;
+  readonly warningMessage: string | null;
+  readonly correlationId: string | null;
+}
