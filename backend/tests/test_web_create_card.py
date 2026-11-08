@@ -86,6 +86,7 @@ def ajuste_local(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://unused@localhost/unused")
     monkeypatch.setenv("MONGO_URL", "mongodb://localhost:27017")
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", _CLIENT_ID)
+    monkeypatch.setenv("IDENTITY_LOCAL_ENABLED", "false")
     get_settings.cache_clear()
 
 

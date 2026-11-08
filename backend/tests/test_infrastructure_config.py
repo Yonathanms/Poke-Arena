@@ -15,6 +15,7 @@ def configured_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MONGO_URL", "mongodb://example:mongo-test-secret@localhost/db")
     monkeypatch.setenv("UPLOAD_DIR", "uploads")
     monkeypatch.setenv("DB_CONNECT_TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv("IDENTITY_LOCAL_ENABLED", "false")
 
 
 def test_configuration_paths_do_not_depend_on_working_directory(

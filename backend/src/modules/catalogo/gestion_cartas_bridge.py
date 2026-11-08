@@ -1,14 +1,9 @@
-import importlib
-
-# Carga de DTOs
-_dtos = importlib.import_module("src.modules.catalogo.gestion-cartas.controllers.cartas_dtos")
-CartaResponseDTO = _dtos.CartaResponseDTO
-CartaSearchQueryDTO = _dtos.CartaSearchQueryDTO
-CartaSearchResponseDTO = _dtos.CartaSearchResponseDTO
-
-# Carga de Puertos
-_ports = importlib.import_module("src.modules.catalogo.gestion-cartas.ports.cartas_ports")
-ICartaRepository = _ports.ICartaRepository
+from .gestion_cartas.controllers.cartas_dtos import (
+    CartaResponseDTO,
+    CartaSearchQueryDTO,
+    CartaSearchResponseDTO,
+)
+from .gestion_cartas.ports.cartas_ports import ICartaRepository
 
 __all__ = [
     "CartaResponseDTO",

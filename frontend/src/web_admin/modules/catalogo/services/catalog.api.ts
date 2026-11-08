@@ -1,5 +1,5 @@
 /**
- * Servicio HTTP de Catálogo para el portal administrativo (`web-admin`).
+ * Servicio HTTP de Catálogo para el portal administrativo (`web_admin`).
  *
  * Responsabilidades:
  * 1. Consultar la lista autoritativa de habilidades (`GET /api/v1/content/abilities`)

@@ -102,7 +102,7 @@ assert 'src.shared.config' not in sys.modules
 
 def test_hexagonal_dependencies_and_single_dynamic_boundary() -> None:
     """Dominio/puertos puros e importlib solo en composición; no hacks de rutas."""
-    folder = BACKEND / "src/modules/catalogo/gestion-cartas"
+    folder = BACKEND / "src/modules/catalogo/gestion_cartas"
     for path in folder.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8-sig"))
         for node in ast.walk(tree):

@@ -1,5 +1,5 @@
 /**
- * Layout principal del portal de Administración (`web-admin`).
+ * Layout principal del portal de Administración (`web_admin`).
  *
  * Responsabilidades:
  * - Presentar el encabezado institucional de Poké-Arena con la paleta `arena` y fuente `Outfit`.

@@ -1,5 +1,5 @@
 /**
- * Servicio especializado de autenticación para el portal administrativo (`web-admin`).
+ * Servicio especializado de autenticación para el portal administrativo (`web_admin`).
  *
  * Responsabilidades:
  * 1. Conectar los hooks de sesión en memoria (`session-store.ts`) con el cliente HTTP

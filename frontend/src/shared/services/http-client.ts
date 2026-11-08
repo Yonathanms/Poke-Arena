@@ -44,7 +44,7 @@ export function configureHttpClientSessionHooks(hooks: {
 
 /**
  * Estructura estándar devuelta por el backend en errores (`application/problem+json`).
- * Ver `backend/src/shared/errores-rfc7807/respuestas.py`.
+ * Ver `backend/src/shared/errores_rfc7807/respuestas.py`.
  */
 export interface Rfc7807ProblemDetails {
   readonly type: string;

@@ -1,5 +1,5 @@
 /**
- * Raíz de la aplicación Frontend de Poké-Arena (`web-admin` y `web-player`).
+ * Raíz de la aplicación Frontend de Poké-Arena (`web_admin` y `web_player`).
  *
  * Responsabilidades:
  * 1. Coordinar el ciclo de autenticación administrativa a través de `useAdminSession`.
@@ -15,11 +15,11 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { AdminLoginForm } from "./web-admin/modules/auth/components/AdminLoginForm";
-import { useAdminSession } from "./web-admin/modules/auth/hooks/useAdminSession";
-import { CreateCardScreen } from "./web-admin/modules/catalogo/screens/CreateCardScreen";
-import { SearchCardsScreen } from "./web-player/modules/catalogo/screens/SearchCardsScreen";
-import { AdminLayout } from "./web-admin/shared/AdminLayout";
+import { AdminLoginForm } from "./web_admin/modules/auth/components/AdminLoginForm";
+import { useAdminSession } from "./web_admin/modules/auth/hooks/useAdminSession";
+import { CreateCardScreen } from "./web_admin/modules/catalogo/screens/CreateCardScreen";
+import { SearchCardsScreen } from "./web_player/modules/catalogo/screens/SearchCardsScreen";
+import { AdminLayout } from "./web_admin/shared/AdminLayout";
 
 export interface AppProps {
   readonly children?: React.ReactNode;

@@ -1,5 +1,5 @@
 /**
- * Contratos de autenticación y sesión administrativa para el portal web-admin.
+ * Contratos de autenticación y sesión administrativa para el portal web_admin.
  *
  * Basado en el contrato real de Entrega 1G (`CARD_CREATION_FRONTEND_HANDOFF.md`)
  * y `sesiones_controller.py`. La sesión emitida es agnóstica del proveedor

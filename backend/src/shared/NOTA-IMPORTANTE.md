@@ -9,10 +9,10 @@ Aquí colocamos todo el código, utilidades y reglas técnicas que **no son excl
 ### ¿Qué hay en cada carpeta?
 
 * **`config.py`**: Lee el archivo `.env` y centraliza todas las configuraciones (puertos, credenciales de bases de datos, etc.).
-* **`errores-rfc7807/`**: Asegura que todos los errores de la API se devuelvan siempre con el mismo formato limpio y estándar.
+* **`errores_rfc7807/`**: Asegura que todos los errores de la API se devuelvan siempre con el mismo formato limpio y estándar.
 * **`idempotencia/`**: Evita que se creen cosas duplicadas si el usuario hace doble clic o si la conexión se corta y se reintenta una petición.
 * **`observabilidad/`**: Agrega identificadores de seguimiento a cada petición para que podamos rastrear fácilmente qué pasó en la consola si algo falla.
-* **`seguridad-roles/`**: Controla quién está autenticado y qué permisos tiene (por ejemplo, diferenciar entre un Administrador y un Jugador).
+* **`seguridad_roles/`**: Controla quién está autenticado y qué permisos tiene (por ejemplo, diferenciar entre un Administrador y un Jugador).
 * **`validacion/`**: Esquemas y funciones de validación reutilizables en múltiples módulos.
 
 ---
