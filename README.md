@@ -139,9 +139,9 @@ Poke-Arena/
 │
 ├── frontend/                       # APLICACIÓN WEB (React + TypeScript + Tailwind)
 │   └── src/
-│       ├── 📁 web-admin/           # Portal de Administradores (Gestión de Catálogo)
-│       ├── 📁 web-player/          # Portal de Jugadores (Colección y Partidas)
-│       └── 📁 portal-b2b/          # Portal de Organizaciones B2B (Torneos)
+│       ├── 📁 web_admin/           # Portal de Administradores (Gestión de Catálogo)
+│       ├── 📁 web_player/          # Portal de Jugadores (Colección y Partidas)
+│       └── 📁 portal_b2b/          # Portal de Organizaciones B2B (Torneos)
 │
 └── backend/                        # API REST (FastAPI + SQLAlchemy + MongoDB)
     ├── alembic/                    # Historial de versiones y migraciones de PostgreSQL
@@ -154,11 +154,11 @@ Poke-Arena/
             ├── 📁 identidad/       # Cuentas, sesiones y autenticación
             ├── 📁 jugadores/       # Colecciones, perfiles, mazos e inventario
             ├── 📁 torneos/         # Gestión de torneos B2B y llaves de API
-            └── 📁 motor-juego/     # Motor de batalla puro y máquina de estados
+            └── 📁 motor_juego/     # Motor de batalla puro y máquina de estados
 ```
 
 > **Regla de oro para crear código nuevo:**  
-> Cada submódulo (ejemplo: `catalogo/gestion-cartas`) contiene 5 carpetas de arquitectura hexagonal:
+> Cada submódulo (ejemplo: `catalogo/gestion_cartas`) contiene 5 carpetas de arquitectura hexagonal:
 > 1. `controllers/`: Endpoints HTTP y validación con Pydantic DTOs.
 > 2. `services/`: Reglas del negocio y casos de uso.
 > 3. `domain/`: Entidades y reglas puras, sin ORM; mapeos SQL en `adapters/`.

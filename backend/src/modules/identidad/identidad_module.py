@@ -10,7 +10,7 @@ from warnings import catch_warnings, simplefilter
 
 from src.shared.config import get_settings
 
-_PAQUETE = f"{__package__}.gestion-sesiones"
+_PAQUETE = f"{__package__}.gestion_sesiones"
 _sql = import_module(f"{_PAQUETE}.adapters.sql_sesiones")
 _servicio = import_module(f"{_PAQUETE}.services.sesiones_service")
 _google = import_module(f"{_PAQUETE}.adapters.google_oidc")

@@ -1,7 +1,6 @@
 """Composición SQL sin registrar API, conectar motores ni activar workers.
 
-Punto único de carga explícita aprobado para gestion-cartas: importlib acepta
-guiones, la sintaxis from/import no. Las dependencias internas son relativas.
+Punto único de composición y carga para gestion_cartas.
 """
 
 from importlib import import_module
@@ -13,7 +12,7 @@ from src.database.postgresql.base import Base
 from src.shared.idempotencia.models import IdempotencyRecordORM
 from src.shared.outbox import OutboxEventORM
 
-_PAQUETE = f"{__package__}.gestion-cartas"
+_PAQUETE = f"{__package__}.gestion_cartas"
 dominio_cartas = import_module(f"{_PAQUETE}.domain.carta_model")
 puertos_cartas = import_module(f"{_PAQUETE}.ports.cartas_ports")
 dominio_imagenes = import_module(f"{_PAQUETE}.domain.imagen_model")

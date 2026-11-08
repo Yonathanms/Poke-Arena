@@ -17,7 +17,7 @@ de esa capa:
 - identidad/    -> Usuarios, roles (RBAC) y sesiones (Google OAuth / Local).
 - jugadores/    -> Colección de cartas, mazos, partidas y perfiles.
 - torneos/      -> Torneos B2B, llaves de API de partners y webhooks.
-- motor-juego/  -> Motor determinista de combate, turnos y máquina de estados.
+- motor_juego/  -> Motor determinista de combate, turnos y máquina de estados.
 
 
 2. ¿QUÉ ES UN SUBMÓDULO? (Features / Gestiones)
@@ -26,8 +26,8 @@ Dentro de cada módulo grande existen submódulos que representan un "Feature"
 o gestión específica (asociada a una historia de usuario).
 
 Por ejemplo, dentro de 'catalogo/' tenemos:
-- gestion-cartas/       -> Todo lo relacionado a crear y consultar cartas.
-- gestion-ubicaciones/  -> Todo lo relacionado a crear y consultar ubicaciones.
+- gestion_cartas/       -> Todo lo relacionado a crear y consultar cartas.
+- gestion_ubicaciones/  -> Todo lo relacionado a crear y consultar ubicaciones.
 
 
 3. LAS 5 CARPETAS DE CADA SUBMÓDULO (Arquitectura Hexagonal Limpia)

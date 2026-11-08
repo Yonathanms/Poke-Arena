@@ -21,7 +21,7 @@ Poke-Arena/
 │       │   ├── components/         # ImageUploader (5:7 y 4:3), botones, alertas, modales
 │       │   └── services/           # Cliente HTTP centralizado (Axios/Fetch a :8000/api/v1)
 │       │
-│       ├── web-admin/              # Portal de Administradores de Contenido
+│       ├── web_admin/              # Portal de Administradores de Contenido
 │       │   ├── shared/             # Utilidades específicas del portal admin
 │       │   └── modules/
 │       │       ├── auth/           # Login y gestión de sesión de Administrador
@@ -32,12 +32,12 @@ Poke-Arena/
 │       │           ├── services/   # Llamadas a endpoints de la API (catalog.api.ts)
 │       │           └── types/      # Tipado TypeScript (card-admin.types.ts)
 │       │
-│       ├── web-player/             # Portal de Jugadores
+│       ├── web_player/             # Portal de Jugadores
 │       │   └── modules/
 │       │       ├── coleccion/      # Vista de inventario de cartas y mazos
 │       │       └── partidas/       # Tablero de juego y emparejamiento
 │       │
-│       └── portal-b2b/             # Portal de Organizaciones B2B (Torneos y Métricas)
+│       └── portal_b2b/             # Portal de Organizaciones B2B (Torneos y Métricas)
 │           └── modules/
 │               └── torneos/        # Gestión de torneos B2B y llaves de API
 │
@@ -50,9 +50,9 @@ Poke-Arena/
         │
         ├── shared/                 # CAPA TRANSVERSAL (Cross-cutting concerns)
         │   ├── config.py           # Variables de entorno y configuración centralizada
-        │   ├── seguridad-roles/    # Extracción de JWT, Bearer tokens y RBAC (401 vs 403)
+        │   ├── seguridad_roles/    # Extracción de JWT, Bearer tokens y RBAC (401 vs 403)
         │   ├── observabilidad/     # Middleware de correlación (X-Correlation-ID) y logs JSON
-        │   ├── errores-rfc7807/    # Manejo estándar de excepciones (RFC 7807 Problem Details)
+        │   ├── errores_rfc7807/    # Manejo estándar de excepciones (RFC 7807 Problem Details)
         │   ├── idempotencia/       # Manejo de cabecera Idempotency-Key
         │   └── validacion/         # Esquemas y validadores comunes de Pydantic
         │
@@ -65,13 +65,13 @@ Poke-Arena/
             │
             ├── catalogo/           # MÓDULO CATÁLOGO (Cartas y Ubicaciones)
             │   ├── catalogo_module.py
-            │   ├── gestion-cartas/
+            │   ├── gestion_cartas/
             │   │   ├── controllers/        # Endpoints REST (cartas_controller.py, cartas_dtos.py)
             │   │   ├── services/           # Lógica de negocio (cartas_service.py)
             │   │   ├── domain/             # Entidades puras (carta_model.py)
             │   │   ├── ports/              # Interfaces abstractas (cartas_ports.py)
             │   │   └── adapters/           # Repositorios SQL, Mongo y Medios (sql, mongo, imagen)
-            │   └── gestion-ubicaciones/
+            │   └── gestion_ubicaciones/
             │       ├── controllers/
             │       ├── services/
             │       ├── domain/
@@ -79,7 +79,7 @@ Poke-Arena/
             │       └── adapters/
             │
             ├── identidad/          # MÓDULO IDENTIDAD (Autenticación y Sesiones)
-            │   └── gestion-sesiones/
+            │   └── gestion_sesiones/
             │       ├── controllers/
             │       ├── services/
             │       ├── domain/
@@ -87,18 +87,18 @@ Poke-Arena/
             │       └── adapters/          # Cliente Google OAuth2 / Test Provider local
             │
             ├── jugadores/          # MÓDULO JUGADORES
-            │   ├── coleccion-mazos/       # Colección inicial, mazos e inventario
-            │   ├── perfil-cuentas/        # Perfil y estadísticas del jugador
+            │   ├── coleccion_mazos/       # Colección inicial, mazos e inventario
+            │   ├── perfil_cuentas/        # Perfil y estadísticas del jugador
             │   ├── emparejamiento/        # Fila clasificatoria
             │   ├── partidas/              # Ciclo de vida de partida
-            │   └── historial-clasificacion/
+            │   └── historial_clasificacion/
             │
             ├── torneos/            # MÓDULO TORNEOS B2B
-            │   ├── partners-llaves-api/   # Organizaciones y API Keys
-            │   ├── gestion-torneos/       # Creación, rondas e inscripción
-            │   └── despacho-webhooks/     # Notificación de eventos a terceros
+            │   ├── partners_llaves_api/   # Organizaciones y API Keys
+            │   ├── gestion_torneos/       # Creación, rondas e inscripción
+            │   └── despacho_webhooks/     # Notificación de eventos a terceros
             │
-            └── motor-juego/        # MÓDULO MOTOR DE JUEGO (Puro y Determinista)
+            └── motor_juego/        # MÓDULO MOTOR DE JUEGO (Puro y Determinista)
                 ├── domain/                # Resolución de turnos y máquina de estados
                 │   ├── motor_batalla.py
                 │   ├── maquina_estados.py
@@ -112,7 +112,7 @@ Poke-Arena/
 ## 2. ¿Por qué el proyecto tiene esta forma? (Justificación de Diseño)
 
 ### En el Frontend:
-1. **Separación por Portales de Usuario (`web-admin`, `web-player`, `portal-b2b`):**
+1. **Separación por Portales de Usuario (`web_admin`, `web_player`, `portal_b2b`):**
    Cada actor tiene requerimientos visuales y de permisos completamente distintos. Separarlos evita mezclar componentes de administración con la interfaz de los jugadores.
 2. **Estructura Interna de cada Módulo:**
    * **`screens/`**: La vista completa (página). No contiene lógica compleja ni llamadas HTTP directas; su trabajo es **ensamblar** los componentes visuales y conectarlos con el hook.
@@ -235,18 +235,18 @@ A continuación se detalla el viaje completo de una petición cuando un Administ
 
 | Si necesitas... | ¿En qué carpeta / archivo trabajas? |
 | :--- | :--- |
-| Agregar un nuevo campo a un formulario web | `frontend/src/web-admin/modules/catalogo/components/CardForm.tsx` |
-| Cambiar el llamado HTTP o la URL de un endpoint | `frontend/src/web-admin/modules/catalogo/services/catalog.api.ts` |
-| Agregar una nueva ruta o endpoint en el Backend | `backend/src/modules/catalogo/gestion-cartas/controllers/cartas_controller.py` |
-| Validar un nuevo campo de entrada en la API | `backend/src/modules/catalogo/gestion-cartas/controllers/cartas_dtos.py` |
-| Cambiar una regla de negocio del juego | `backend/src/modules/catalogo/gestion-cartas/services/cartas_service.py` |
-| Representar tablas existentes con ORM | `backend/src/modules/catalogo/gestion-cartas/adapters/cartas_orm.py`; cambios SQL solo mediante Alembic autorizado |
-| Modificar cómo se procesan o recortan las imágenes | `backend/src/modules/catalogo/gestion-cartas/adapters/imagen_carta_adapter.py` |
-| Modificar la consulta SQL en PostgreSQL | `backend/src/modules/catalogo/gestion-cartas/adapters/sql_carta_repository.py` |
-| Modificar la proyección o búsqueda en MongoDB | `backend/src/modules/catalogo/gestion-cartas/adapters/mongo_carta_repository.py` |
+| Agregar un nuevo campo a un formulario web | `frontend/src/web_admin/modules/catalogo/components/CardForm.tsx` |
+| Cambiar el llamado HTTP o la URL de un endpoint | `frontend/src/web_admin/modules/catalogo/services/catalog.api.ts` |
+| Agregar una nueva ruta o endpoint en el Backend | `backend/src/modules/catalogo/gestion_cartas/controllers/cartas_controller.py` |
+| Validar un nuevo campo de entrada en la API | `backend/src/modules/catalogo/gestion_cartas/controllers/cartas_dtos.py` |
+| Cambiar una regla de negocio del juego | `backend/src/modules/catalogo/gestion_cartas/services/cartas_service.py` |
+| Representar tablas existentes con ORM | `backend/src/modules/catalogo/gestion_cartas/adapters/cartas_orm.py`; cambios SQL solo mediante Alembic autorizado |
+| Modificar cómo se procesan o recortan las imágenes | `backend/src/modules/catalogo/gestion_cartas/adapters/imagen_carta_adapter.py` |
+| Modificar la consulta SQL en PostgreSQL | `backend/src/modules/catalogo/gestion_cartas/adapters/sql_carta_repository.py` |
+| Modificar la proyección o búsqueda en MongoDB | `backend/src/modules/catalogo/gestion_cartas/adapters/mongo_carta_repository.py` |
 | Cambiar variables del sistema o puertos | `backend/src/shared/config.py` y `.env` |
 
 
-### Aclaración aprobada en 1B.2A
+### Aclaración de Arquitectura
 
-El dominio es puro; SQLAlchemy pertenece a adaptadores. La narrativa anterior es un flujo conceptual histórico, no evidencia de endpoints, imágenes o workers implementados. Nombres físicos, límites y decisiones vigentes están en el contrato v1.3. La carga de `gestion-cartas` se centraliza en `catalogo_module.py` con importlib aprobado, sin renombrar carpetas ni modificar sys.path. Véase `backend/docs/contracts/ORM_PERSISTENCE_1B2A.md`.
+El dominio es puro; SQLAlchemy pertenece a adaptadores. La estructura utiliza `snake_case` oficial (`gestion_cartas`, etc.) para cumplir con el estándar PEP 8 de paquetes en Python sin requerir transformaciones dinámicas. La composición del módulo se centraliza en `catalogo_module.py`.

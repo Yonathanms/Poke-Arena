@@ -1,5 +1,5 @@
 /**
- * Formulario de inicio de sesión para el Administrador Maestro (`web-admin`).
+ * Formulario de inicio de sesión para el Administrador Maestro (`web_admin`).
  *
  * Seguridad y accesibilidad:
  * - Limpia inmediatamente la contraseña del estado local tras enviar la solicitud.
