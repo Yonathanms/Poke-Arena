@@ -85,11 +85,13 @@ def router_cartas(administrador: Any) -> Any:
 def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
     """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
     from src.database.mongodb.connection import get_mongo_db
+    from src.database.mongodb.destinos_outbox import MONGO_F5_BASE
     from src.database.postgresql.connection import AsyncSessionLocal
     from src.shared.config import get_settings
 
     ajustes = get_settings()
-    almacen = outbox_mongo.MongoProyeccionCartas(get_mongo_db()["cards_projection"])
+    db = get_mongo_db(conexion_directa=ajustes.MONGO_DB == MONGO_F5_BASE)
+    almacen = outbox_mongo.MongoProyeccionCartas(db["cards_projection"])
     repo = outbox_sql.SqlOutboxCartas(
         AsyncSessionLocal, ajustes.OUTBOX_LEASE_SECONDS, ajustes.OUTBOX_MAX_ATTEMPTS
     )

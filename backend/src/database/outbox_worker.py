@@ -8,18 +8,45 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 from pymongo.errors import PyMongoError
+from pymongo.uri_parser import parse_uri
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 from src.database.mongodb.connection import close_mongo_connection
+from src.database.mongodb.destinos_outbox import MONGO_F5_BASE, MONGO_F5_SERVIDOR, PREFIJOS_MONGO_1F
 from src.modules.catalogo.catalogo_module import componer_procesador_outbox
 from src.shared.config import Settings, get_settings
 
 logger = logging.getLogger("pokearena.outbox_worker")
+_POSTGRES_F5 = ("127.0.0.1", 15433, "pokearena_alembic_frontend_dev")
+
+
+def _verificar_f5(ajustes: Settings) -> None:
+    """Verifica el destino de ambos drivers sin conectarse a los motores."""
+    sql = make_url(ajustes.DATABASE_URL)
+    mongo = parse_uri(ajustes.MONGO_URL, warn=False)
+    if (
+        ajustes.ENVIRONMENT != "development"
+        or sql.drivername != "postgresql+asyncpg"
+        or (sql.host, sql.port, sql.database) != _POSTGRES_F5
+        or sql.query
+        or mongo["nodelist"] != [MONGO_F5_SERVIDOR]
+        or mongo["password"] is None
+        or mongo["database"] != MONGO_F5_BASE
+        or ajustes.MONGO_DB != MONGO_F5_BASE
+        or {k.lower() for k in mongo["options"]} - {"authsource", "directconnection"}
+        or mongo["options"].get("directConnection", True) is not True
+    ):
+        raise ValueError("configuracion_outbox_fuera_de_1f")
 
 
 def verificar_configuracion(ajustes: Settings) -> None:
-    """Limita la ejecución de 1F a destinos explícitos en loopback."""
-    pg = urlsplit(ajustes.DATABASE_URL)
-    mongo = urlsplit(ajustes.MONGO_URL)
+    """Conserva el aislamiento 1F y verifica el par exacto de destinos F5."""
+    try:
+        pg = urlsplit(ajustes.DATABASE_URL)
+        mongo = urlsplit(ajustes.MONGO_URL)
+    except ValueError:
+        raise ValueError("configuracion_outbox_fuera_de_1f") from None
     if (
         pg.hostname not in {"127.0.0.1", "::1", "localhost"}
         or not pg.path.startswith("/pokearena_alembic_")
@@ -28,9 +55,20 @@ def verificar_configuracion(ajustes: Settings) -> None:
         or mongo.hostname not in {"127.0.0.1", "::1", "localhost"}
         or "," in mongo.netloc.rsplit("@", 1)[-1]
         or not mongo.username
-        or not ajustes.MONGO_DB.startswith(("pokearena_gridfs_test_", "pokearena_outbox_"))
         or ajustes.OUTBOX_LEASE_SECONDS <= ajustes.DB_CONNECT_TIMEOUT_SECONDS
     ):
+        raise ValueError("configuracion_outbox_fuera_de_1f")
+
+    if (
+        ajustes.MONGO_DB == MONGO_F5_BASE
+        or mongo.path == f"/{MONGO_F5_BASE}"
+        or pg.path == f"/{_POSTGRES_F5[2]}"
+    ):
+        try:
+            _verificar_f5(ajustes)
+        except (ArgumentError, PyMongoError, ValueError):
+            raise ValueError("configuracion_outbox_fuera_de_1f") from None
+    elif not ajustes.MONGO_DB.startswith(PREFIJOS_MONGO_1F):
         raise ValueError("configuracion_outbox_fuera_de_1f")
 
 
@@ -40,6 +78,8 @@ async def run_outbox_worker(*, una_vez: bool = False) -> None:
     verificar_configuracion(ajustes)
     from src.database.postgresql.connection import engine
 
+    if ajustes.MONGO_DB == MONGO_F5_BASE and engine.url != make_url(ajustes.DATABASE_URL):
+        raise ValueError("configuracion_outbox_fuera_de_1f")
     engine.echo = False
 
     detener = asyncio.Event()

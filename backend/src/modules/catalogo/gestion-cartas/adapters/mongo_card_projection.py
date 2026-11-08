@@ -8,6 +8,8 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
+from src.database.mongodb.destinos_outbox import MONGO_F5_BASE, MONGO_F5_SERVIDOR, PREFIJOS_MONGO_1F
+
 from ..domain.proyeccion_carta import EventoIncompatible, ProyeccionCarta, ProyeccionTemporal
 
 
@@ -20,9 +22,18 @@ class MongoProyeccionCartas:
 
     def __init__(self, coleccion: AsyncCollection[dict[str, Any]]) -> None:
         """Usa la colección inyectada con lecturas primarias y escrituras confirmadas."""
-        if coleccion.name != "cards_projection" or not coleccion.database.name.startswith(
-            ("pokearena_gridfs_test_", "pokearena_outbox_")
-        ):
+        db = coleccion.database
+        if db.name == MONGO_F5_BASE:
+            cliente = db.client
+            servidores = cliente.topology_description.server_descriptions()
+            valido = (
+                cliente.options.direct_connection is True
+                and cliente.get_default_database(default="_outbox_sin_base").name == MONGO_F5_BASE
+                and set(servidores) == {MONGO_F5_SERVIDOR}
+            )
+        else:
+            valido = db.name.startswith(PREFIJOS_MONGO_1F)
+        if coleccion.name != "cards_projection" or not valido:
             raise ValueError("destino_mongodb_fuera_de_1f")
         self._coleccion = coleccion.with_options(
             read_preference=ReadPreference.PRIMARY,

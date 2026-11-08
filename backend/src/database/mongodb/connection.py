@@ -11,7 +11,7 @@ from src.shared.config import get_settings
 _clients: dict[asyncio.AbstractEventLoop, AsyncMongoClient[dict[str, Any]]] = {}
 
 
-def get_mongo_client() -> AsyncMongoClient[dict[str, Any]]:
+def get_mongo_client(*, conexion_directa: bool = False) -> AsyncMongoClient[dict[str, Any]]:
     """Reutiliza un cliente PyMongo Async para el event loop que lo solicita.
 
     La conexión es diferida; ping/operaciones propagan errores de autenticación
@@ -21,19 +21,21 @@ def get_mongo_client() -> AsyncMongoClient[dict[str, Any]]:
     if loop not in _clients:
         settings = get_settings()
         timeout_ms = settings.DB_CONNECT_TIMEOUT_SECONDS * 1000
+        opciones: dict[str, Any] = {"directConnection": True} if conexion_directa else {}
         _clients[loop] = AsyncMongoClient(
             settings.MONGO_URL,
             serverSelectionTimeoutMS=timeout_ms,
             connectTimeoutMS=timeout_ms,
             timeoutMS=timeout_ms,
             appname="pokearena-backend",
+            **opciones,
         )
     return _clients[loop]
 
 
-def get_mongo_db() -> AsyncDatabase[dict[str, Any]]:
+def get_mongo_db(*, conexion_directa: bool = False) -> AsyncDatabase[dict[str, Any]]:
     """Devuelve la base configurada sin crearla ni modificar sus colecciones."""
-    client = get_mongo_client()
+    client = get_mongo_client(conexion_directa=conexion_directa)
     return client[get_settings().MONGO_DB]
 
 
@@ -42,4 +44,3 @@ async def close_mongo_connection() -> None:
     client = _clients.pop(asyncio.get_running_loop(), None)
     if client is not None:
         await client.close()
-
