@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from src.database.mongodb.connection import close_mongo_connection, get_mongo_db
-from src.modules.catalogo.catalogo_module import router_cartas
+from src.modules.catalogo.catalogo_module import router_cartas, router_ubicaciones
 from src.modules.identidad import identidad_module
 from src.shared.config import get_settings
 from src.shared.http_module import registrar_errores
@@ -49,6 +49,7 @@ def crear_app() -> FastAPI:
     app.include_router(
         router_cartas(identidad_module.requerir_administrador), prefix=settings.API_V1_PREFIX
     )
+    app.include_router(router_ubicaciones(), prefix=settings.API_V1_PREFIX)
     app.add_api_route(
         f"{settings.API_V1_PREFIX}/health",
         health_check,

@@ -1,2 +1,2 @@
-﻿"""Contrato que usa jugadores/partidas para invocar el motor."""
+"""Contrato que usa jugadores/partidas para invocar el motor."""
 
