@@ -49,6 +49,27 @@ python manage.py dbs
 
 ---
 
+### Paso 3: Aprovisionar Base de Datos y Administrador Local (setup-dev)
+Para configurar automáticamente las tablas en PostgreSQL mediante Alembic, crear los índices de MongoDB y registrar el usuario Administrador Maestro para pruebas locales, ejecuta desde la raíz:
+
+```powershell
+# Ubicación: Poke-Arena/
+python manage.py setup-dev
+```
+
+Este comando realiza las siguientes tareas de forma segura y automatizada:
+* Verifica y asegura la red Docker (`poke-arena_default`) y los volúmenes persistentes.
+* Crea y configura la base de datos de desarrollo `pokearena_alembic_frontend_dev` con el usuario migrador `pokearena_migrator`.
+* Aplica todas las migraciones de esquema con Alembic hasta la revisión `1g_local_master_admin`.
+* Otorga privilegios de tabla al usuario de aplicación en PostgreSQL.
+* Crea el índice único en MongoDB (`cards_projection.code`).
+* Aprovisiona al Administrador Maestro local en `identity_users` con hash scrypt:
+  * **Usuario:** `maestro-local`
+  * **Contraseña:** `PokeArenaMaster2026!`
+  * **Rol asignado:** `PLATFORM_ADMIN`
+
+---
+
 ## Flujo de Trabajo Diario (Dividir Terminales en VS Code)
 
 Para desarrollar cómodamente con recarga automática (*hot-reload*), abre **dos terminales** en VS Code:
@@ -80,6 +101,10 @@ npm run dev
 *(Atajo alternativo desde la raíz: `python manage.py dev-frontend`)*
 
 * Aplicación Web en vivo: http://localhost:5173
+  * **Portal de Administración (Crear Carta - 2.1.1):** Ingresa con las credenciales de administrador local:
+    * **Usuario:** `maestro-local`
+    * **Contraseña:** `PokeArenaMaster2026!`
+  * **Portal de Jugador (Buscar Carta - 2.1.2):** En la pantalla de login, haz clic en el enlace superior *"Ver Catálogo Público (Jugador) →"* o ingresa directamente con el parámetro de vista: http://localhost:5173/?view=player
 
 ---
 
@@ -92,6 +117,7 @@ Todos estos comandos se ejecutan desde la raíz del proyecto (`Poke-Arena/`):
 | **`python manage.py install`** | Genera el `.env` e instala dependencias de Backend y Frontend. |
 | **`python manage.py env`** | Genera exclusivamente el archivo `.env` a partir de `.env.example`. |
 | **`python manage.py dbs`** | Enciende PostgreSQL y MongoDB en Docker. |
+| **`python manage.py setup-dev`** | Aprovisiona PostgreSQL (Alembic 1g), MongoDB y el usuario administrador local (`maestro-local`). |
 | **`python manage.py stop`** | Detiene los contenedores de Docker conservando los datos guardados. |
 | **`python manage.py clean`** | Comando destructivo legado: NO utilizar durante esta entrega. |
 | **`python manage.py status`** | Consulta el estado y puertos de los contenedores Docker. |
