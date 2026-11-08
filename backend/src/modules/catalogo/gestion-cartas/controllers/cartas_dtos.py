@@ -1,11 +1,34 @@
-"""Esquemas HTTP de Crear Carta, separados del servicio y del dominio."""
+"""Esquemas HTTP de Crear y Buscar Carta, separados del servicio y del dominio."""
 
-from typing import Literal
+from enum import StrEnum
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from ..services.cartas_service import ResultadoCrearCarta
 
+
+class TipoCarta(StrEnum):
+    FUE = "FUE"
+    AGU = "AGU"
+    PLA = "PLA"
+    ELE = "ELE"
+    PSI = "PSI"
+    LUC = "LUC"
+    INC = "INC"
+
+
+class RarezaCarta(StrEnum):
+    COMUN = "COMUN"
+    INFRECUENTE = "INFRECUENTE"
+    RARA = "RARA"
+    EPICA = "EPICA"
+    LEGENDARIA = "LEGENDARIA"
+
+
+# ------------------------------------------------------------------------------
+# DTOs para Creación de Cartas (1D / 1E)
+# ------------------------------------------------------------------------------
 
 class CamposCrearCarta(BaseModel):
     """Campos textuales multipart. Las invariantes de negocio quedan en 1D."""
@@ -74,3 +97,67 @@ class HabilidadSeleccionable(BaseModel):
 
     code: str
     name: str
+
+
+# ------------------------------------------------------------------------------
+# DTOs para Consulta y Búsqueda de Cartas (Catálogo / Jugadores)
+# ------------------------------------------------------------------------------
+
+class CartaResponseDTO(BaseModel):
+    """Representación de una carta devuelta por la API para búsqueda y visualización."""
+
+    id: str
+    name: str = Field(default="", validation_alias=AliasChoices("name", "nombre"))
+    code: str = Field(default="", validation_alias=AliasChoices("code", "codigo"))
+    type: str = Field(default="FUE", validation_alias=AliasChoices("type", "tipo", "card_type"))
+    rarity: str = Field(default="COMUN", validation_alias=AliasChoices("rarity", "rareza"))
+    cost: int = Field(default=0, validation_alias=AliasChoices("cost", "coste_energia"), ge=0, le=10)
+    power: int = Field(default=0, validation_alias=AliasChoices("power", "puntos_ataque"))
+    hp: int = Field(default=100, validation_alias=AliasChoices("hp", "puntos_vida"))
+    imageUrl: str | None = Field(default=None, validation_alias=AliasChoices("imageUrl", "imagen_url"))
+    thumbnailUrl: str | None = Field(default=None, validation_alias=AliasChoices("thumbnailUrl", "imagen_miniatura_url"))
+    description: str | None = Field(default=None, validation_alias=AliasChoices("description", "descripcion"))
+    price: float | None = None
+    activo: bool = True
+    ability_code: str | None = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+    )
+
+    @property
+    def nombre(self) -> str:
+        return self.name
+
+    @property
+    def codigo(self) -> str:
+        return self.code
+
+    @property
+    def tipo(self) -> str:
+        return self.type
+
+    @property
+    def rareza(self) -> str:
+        return self.rarity
+
+
+class CartaSearchQueryDTO(BaseModel):
+    """Parámetros de consulta y filtrado para búsqueda de cartas."""
+
+    q: str | None = Field(default=None, description="Término de búsqueda por nombre, código o descripción")
+    tipo: TipoCarta | None = Field(default=None, description="Filtro opcional por tipo elemental")
+    rareza: RarezaCarta | None = Field(default=None, description="Filtro opcional por rareza")
+    limite: int = Field(default=15, ge=1, le=100, description="Cantidad máxima de cartas (defecto 15 para 3x5)")
+    pagina: int = Field(default=1, ge=1, description="Número de página para paginado")
+
+
+class CartaSearchResponseDTO(BaseModel):
+    """Respuesta paginada del catálogo de cartas."""
+
+    items: list[CartaResponseDTO]
+    total: int
+    pagina: int
+    limite: int
+    total_paginas: int

@@ -64,7 +64,6 @@ def crear_almacen_imagenes() -> Any:
     return modulo.AlmacenImagenGridFS(bucket, crear_procesador_imagenes())
 
 
-
 def crear_servicio_crear_carta() -> Any:
     """Compone el caso de uso para Python, con los clientes oficiales."""
     from src.database.postgresql.connection import AsyncSessionLocal, engine
@@ -102,7 +101,6 @@ def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
     )
 
 
-
 async def listar_habilidades() -> list[tuple[str, str]]:
     """Compone la lectura administrativa con el repositorio y la sesión oficiales."""
     from src.database.postgresql.connection import transactional_session
@@ -111,3 +109,15 @@ async def listar_habilidades() -> list[tuple[str, str]]:
         repo = crear_repositorio_cartas(sesion)
         filas = await repo.listar_habilidades()
         return list(filas)
+
+
+__all__ = [
+    "componer_procesador_outbox",
+    "crear_almacen_imagenes",
+    "crear_procesador_imagenes",
+    "crear_repositorio_cartas",
+    "crear_servicio_crear_carta",
+    "listar_habilidades",
+    "modelos_persistencia",
+    "router_cartas",
+]

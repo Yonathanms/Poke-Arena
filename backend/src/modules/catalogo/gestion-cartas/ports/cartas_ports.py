@@ -1,5 +1,6 @@
 """Contratos de persistencia; sin SQL, política HTTP ni asignación de códigos."""
 
+from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Protocol
 
@@ -56,3 +57,20 @@ class CartasRepositoryPort(Protocol):
         """Lee la cadena en un snapshot SQL. Una repetición indica un ciclo."""
         ...
 
+
+# ------------------------------------------------------------------------------
+# Puerto para Búsqueda y Consulta NoSQL de Cartas
+# ------------------------------------------------------------------------------
+
+class ICartaRepository(ABC):
+    """Puerto de persistencia para operaciones de consulta y búsqueda en Catálogo."""
+
+    @abstractmethod
+    async def buscar_cartas(self, params: object) -> object:
+        """Busca cartas según los criterios especificados."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def obtener_por_id_o_codigo(self, identificador: str) -> object | None:
+        """Obtiene una carta específica por su UUID o código único."""
+        raise NotImplementedError

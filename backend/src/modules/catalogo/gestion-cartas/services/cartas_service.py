@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from re import fullmatch
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from ..domain.carta_model import (
@@ -450,3 +450,23 @@ class CrearCarta:
             ) from None
         except ErrorImagen as error:
             raise _error_imagen(error, operacion_id) from None
+
+
+# ------------------------------------------------------------------------------
+# Servicio de Búsqueda y Consulta de Cartas (Catálogo / Jugadores)
+# ------------------------------------------------------------------------------
+
+class CartasService:
+    """Capa de lógica de negocio para operaciones de consulta y búsqueda sobre el catálogo."""
+
+    def __init__(self, repository: Any) -> None:
+        self._repository = repository
+
+    async def buscar_cartas(self, params: Any) -> Any:
+        """Aplica validaciones de negocio en búsquedas y delega la consulta al repositorio."""
+        return await self._repository.buscar_cartas(params)
+
+    async def obtener_detalle_carta(self, identificador: str) -> Any | None:
+        """Obtiene la ficha técnica de una carta por ID o Código."""
+        return await self._repository.obtener_por_id_o_codigo(identificador)
+

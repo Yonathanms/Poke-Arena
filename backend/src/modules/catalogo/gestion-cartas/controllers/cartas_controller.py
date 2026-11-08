@@ -1,8 +1,9 @@
-"""Adaptador HTTP de Crear Carta. La creación y sus transacciones pertenecen a 1D."""
+"""Adaptador HTTP de Crear y Buscar Cartas."""
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 from python_multipart.exceptions import MultipartParseError
 from starlette.datastructures import FormData, UploadFile
@@ -12,17 +13,27 @@ from starlette.requests import ClientDisconnect
 from src.shared.http_module import problema, respuestas_documentadas
 from src.shared.validacion.cuerpo import CuerpoExcesivo, flujo_acotado
 
+from ..adapters.mongo_carta_repository import MongoCartaRepository
 from ..domain.carta_model import DatosCarta
 from ..domain.imagen_model import MAX_IMAGE_BYTES
 from ..ports.cartas_ports import ErrorPersistencia
 from ..services.cartas_service import (
     ActorCreacion,
+    CartasService,
     CrearCarta,
     ErrorCreacion,
     SolicitudCrearCarta,
     TipoErrorCreacion,
 )
-from .cartas_dtos import CamposCrearCarta, CartaCreada, HabilidadSeleccionable, esquema_multipart
+from .cartas_dtos import (
+    CamposCrearCarta,
+    CartaCreada,
+    CartaResponseDTO,
+    CartaSearchQueryDTO,
+    CartaSearchResponseDTO,
+    HabilidadSeleccionable,
+    esquema_multipart,
+)
 
 _LIMITE_MULTIPART = MAX_IMAGE_BYTES + 16_384
 _PATRON_CLAVE = r"^[!-+\x2D-~]{1,128}$"  # ASCII visible, sin coma (headers combinados).
@@ -132,7 +143,7 @@ def crear_router(
     servicio: Callable[[], CrearCarta],
     habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
 ) -> APIRouter:
-    """Registra la creación con autorización obligatoria y composición diferida."""
+    """Registra la creación con autorización obligatoria y búsqueda pública de cartas."""
     router = APIRouter(prefix="/content", tags=["Content Cards"])
 
     @router.get(
@@ -192,11 +203,50 @@ def crear_router(
         try:
             resultado = await servicio().ejecutar(ActorCreacion(actor), solicitud)
         except ErrorCreacion as error:
-            status, detalle = _ERRORES[error.tipo]
-            raise problema(status, error.tipo.value, detalle) from None
+            status_code, detalle = _ERRORES[error.tipo]
+            raise problema(status_code, error.tipo.value, detalle) from None
         except Exception:
             raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
         response.headers["X-Correlation-ID"] = resultado.operacion_id
         return CartaCreada.desde_resultado(resultado)
+
+    @router.get(
+        "/cards",
+        response_model=CartaSearchResponseDTO,
+        status_code=status.HTTP_200_OK,
+        summary="Buscar y filtrar cartas del catálogo",
+        description="Endpoint optimizado con MongoDB para búsquedas rápidas por texto, tipo, rareza y paginado.",
+    )
+    async def buscar_cartas(
+        q: Annotated[str | None, Query(description="Nombre, código o texto descriptivo")] = None,
+        tipo: Annotated[str | None, Query(description="Tipo elemental (ej. FUE, AGU, PLA)")] = None,
+        rareza: Annotated[str | None, Query(description="Rareza (COMUN, INFRECUENTE, RARA, EPICA, LEGENDARIA)")] = None,
+        limite: Annotated[int, Query(ge=1, le=100, description="Cartas por página (defecto 15)")] = 15,
+        pagina: Annotated[int, Query(ge=1, description="Número de página")] = 1,
+    ) -> CartaSearchResponseDTO:
+        repo = MongoCartaRepository()
+        srv = CartasService(repository=repo)
+        search_params = CartaSearchQueryDTO(
+            q=q,
+            tipo=tipo,  # type: ignore[arg-type]
+            rareza=rareza,  # type: ignore[arg-type]
+            limite=limite,
+            pagina=pagina,
+        )
+        return await srv.buscar_cartas(search_params)
+
+    @router.get(
+        "/cards/{identificador}",
+        response_model=CartaResponseDTO,
+        status_code=status.HTTP_200_OK,
+        summary="Obtener detalle de carta por ID o Código",
+    )
+    async def obtener_detalle_carta(identificador: str) -> CartaResponseDTO:
+        repo = MongoCartaRepository()
+        srv = CartasService(repository=repo)
+        carta = await srv.obtener_detalle_carta(identificador)
+        if not carta:
+            raise problema(404, "carta_no_encontrada", f"No se encontró carta con identificador '{identificador}'.")
+        return carta
 
     return router
