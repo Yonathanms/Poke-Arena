@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from src.database.mongodb.connection import close_mongo_connection, get_mongo_db
 from src.database.postgresql.connection import engine
+from src.modules.catalogo.catalogo_module import router as catalogo_router
 from src.shared.config import get_settings
 
 settings = get_settings()
@@ -38,6 +39,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Siguiente paso: registrar módulos de la aplicación
+app.include_router(catalogo_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get(
