@@ -80,6 +80,12 @@ def router_cartas(administrador: Any) -> Any:
     return modulo.crear_router(administrador, crear_servicio_crear_carta, listar_habilidades)
 
 
+def router_ubicaciones() -> Any:
+    """Compone el router de ubicaciones."""
+    from .gestion_ubicaciones.controllers.ubicaciones_controller import router
+    return router
+
+
 def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
     """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
     from src.database.mongodb.connection import get_mongo_db
@@ -119,4 +125,5 @@ __all__ = [
     "listar_habilidades",
     "modelos_persistencia",
     "router_cartas",
+    "router_ubicaciones",
 ]

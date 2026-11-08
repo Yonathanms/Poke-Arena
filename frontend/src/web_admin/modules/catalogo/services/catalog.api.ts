@@ -27,6 +27,7 @@ import type {
   CardCreatedResponseDTO,
   CreateCardMultipartInput,
 } from "../types/card-admin.types";
+import type { LocationResponseDTO } from "../types/location-admin.types";
 import {
   CARD_VALIDATION_CONSTRAINTS,
   isValidIdempotencyKey,
@@ -182,3 +183,30 @@ export async function submitCreateCardMultipart(
     correlationId: response.correlationId,
   };
 }
+
+const LOCATIONS_ENDPOINT = "/content/locations";
+
+/**
+ * Envía una solicitud de creación de ubicación (`POST /api/v1/content/locations`) usando
+ * `multipart/form-data`.
+ */
+export async function createLocation(
+  formData: FormData,
+  idempotencyKey: string,
+  token = "admin-token-placeholder"
+): Promise<LocationResponseDTO> {
+  const response = await fetch(`/api/v1${LOCATIONS_ENDPOINT}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new Error(typeof err["detail"] === "string" ? err["detail"] : `Error ${response.status}`);
+  }
+  return response.json() as Promise<LocationResponseDTO>;
+}
+
