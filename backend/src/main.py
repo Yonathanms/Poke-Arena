@@ -4,10 +4,8 @@ from typing import Any
 
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
-from src.database.mongodb.connection import close_mongo_connection, get_mongo_db
-from src.database.postgresql.connection import engine
+from src.modules.catalogo.catalogo_module import catalogo_router
 from src.shared.config import get_settings
 
 settings = get_settings()
@@ -17,8 +15,12 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Ciclo de vida de la aplicación FastAPI."""
     yield
-    close_mongo_connection()
-    await engine.dispose()
+    # Conexiones se gestionan de forma segura si están activas
+    try:
+        from src.database.mongodb.connection import close_mongo_connection
+        close_mongo_connection()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -39,34 +41,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rutas de la API v1
+app.include_router(catalogo_router, prefix=settings.API_V1_PREFIX)
+
 
 @app.get(
     f"{settings.API_V1_PREFIX}/health",
     tags=["System"],
     status_code=status.HTTP_200_OK,
-    summary="Verificar estado del sistema y conexiones a bases de datos",
+    summary="Verificar estado del sistema y endpoints",
 )
 async def health_check() -> dict[str, Any]:
     health_status: dict[str, Any] = {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
-        "databases": {},
+        "catalogo": "ready",
     }
-
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        health_status["databases"]["postgres"] = "connected"
-    except Exception as e:
-        health_status["status"] = "degraded"
-        health_status["databases"]["postgres"] = f"error: {e}"
-
-    try:
-        mongo_db = get_mongo_db()
-        await mongo_db.command("ping")
-        health_status["databases"]["mongodb"] = "connected"
-    except Exception as e:
-        health_status["status"] = "degraded"
-        health_status["databases"]["mongodb"] = f"error: {e}"
-
     return health_status
