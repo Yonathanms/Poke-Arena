@@ -68,7 +68,7 @@ Poke-Arena/
             │   ├── gestion-cartas/
             │   │   ├── controllers/        # Endpoints REST (cartas_controller.py, cartas_dtos.py)
             │   │   ├── services/           # Lógica de negocio (cartas_service.py)
-            │   │   ├── domain/             # Entidades/modelos ORM (carta_model.py)
+            │   │   ├── domain/             # Entidades puras (carta_model.py)
             │   │   ├── ports/              # Interfaces abstractas (cartas_ports.py)
             │   │   └── adapters/           # Repositorios SQL, Mongo y Medios (sql, mongo, imagen)
             │   └── gestion-ubicaciones/
@@ -240,9 +240,13 @@ A continuación se detalla el viaje completo de una petición cuando un Administ
 | Agregar una nueva ruta o endpoint en el Backend | `backend/src/modules/catalogo/gestion-cartas/controllers/cartas_controller.py` |
 | Validar un nuevo campo de entrada en la API | `backend/src/modules/catalogo/gestion-cartas/controllers/cartas_dtos.py` |
 | Cambiar una regla de negocio del juego | `backend/src/modules/catalogo/gestion-cartas/services/cartas_service.py` |
-| Modificar las columnas de la tabla en PostgreSQL | `backend/src/modules/catalogo/gestion-cartas/domain/carta_model.py` |
+| Representar tablas existentes con ORM | `backend/src/modules/catalogo/gestion-cartas/adapters/cartas_orm.py`; cambios SQL solo mediante Alembic autorizado |
 | Modificar cómo se procesan o recortan las imágenes | `backend/src/modules/catalogo/gestion-cartas/adapters/imagen_carta_adapter.py` |
 | Modificar la consulta SQL en PostgreSQL | `backend/src/modules/catalogo/gestion-cartas/adapters/sql_carta_repository.py` |
 | Modificar la proyección o búsqueda en MongoDB | `backend/src/modules/catalogo/gestion-cartas/adapters/mongo_carta_repository.py` |
 | Cambiar variables del sistema o puertos | `backend/src/shared/config.py` y `.env` |
 
+
+### Aclaración aprobada en 1B.2A
+
+El dominio es puro; SQLAlchemy pertenece a adaptadores. La narrativa anterior es un flujo conceptual histórico, no evidencia de endpoints, imágenes o workers implementados. Nombres físicos, límites y decisiones vigentes están en el contrato v1.3. La carga de `gestion-cartas` se centraliza en `catalogo_module.py` con importlib aprobado, sin renombrar carpetas ni modificar sys.path. Véase `backend/docs/contracts/ORM_PERSISTENCE_1B2A.md`.

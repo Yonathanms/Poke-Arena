@@ -1,63 +1,80 @@
-# ==============================================================================
-# POKÉ-ARENA - BASES DE DATOS LOCALES CON DOCKER COMPOSE
-#
-# Uso:
-#   docker compose up -d       (Inicia PostgreSQL y MongoDB en segundo plano)
-#   docker compose down        (Detiene las bases de datos conservando la data)
-#   docker compose down -v     (Detiene y borra volúmenes para empezar en limpio)
-#
-# Tanto el Backend (FastAPI en :8000) como el Frontend (Vite en :5173) se ejecutan
-# directamente en local (Windows) sin contenedores.
-# ==============================================================================
-
+# Entrega 1A: definición reconciliada con los recursos persistentes existentes.
+# Los volúmenes/red deben existir. No inicializar ni sustituir datos automáticamente.
+# Los dos binds obsoletos de initdb.d se retiraron con autorización explícita.
+# Usuarios ya provisionados: las variables de inicialización no los administran.
 services:
-  # ----------------------------------------------------------------------------
-  # 1. PostgreSQL 16 (Base de Datos Relacional ACID)
-  # ----------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: pokearena-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_pass_2026}
+      POSTGRES_USER: ${POSTGRES_USER:?Configure el administrador PostgreSQL existente}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure su contraseña en .env privado}
       POSTGRES_DB: ${POSTGRES_DB:-pokearena_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-pokearena_db}"]
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$${POSTGRES_PASSWORD}" psql -X -h 127.0.0.1
+          -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+          -v ON_ERROR_STOP=1 -tAc 'SELECT 1' >/dev/null
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-  # ----------------------------------------------------------------------------
-  # 2. MongoDB 7 (Base de Datos NoSQL Documental - Proyecciones de Catálogo)
-  # ----------------------------------------------------------------------------
   mongo:
     image: mongo:7.0
     container_name: pokearena-mongo
     restart: unless-stopped
     ports:
-      - "${MONGO_PORT:-27017}:27017"
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-mongoadmin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongo_secure_pass_2026}
-      MONGO_INITDB_DATABASE: ${MONGO_DB:-pokearena_catalog}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?Configure el administrador Mongo existente}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Configure su contraseña en .env privado}
+      MONGO_DB: ${MONGO_DB:-pokearena_catalog}
     volumes:
       - mongo_data:/data/db
+      - mongo_config_data:/data/configdb
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      # Lee secretos del entorno dentro de mongosh, sin incorporarlos al argv.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --nodb
+        - --eval
+        - >-
+          try {
+            const uri = 'mongodb://' + encodeURIComponent(process.env.MONGO_INITDB_ROOT_USERNAME)
+              + ':' + encodeURIComponent(process.env.MONGO_INITDB_ROOT_PASSWORD)
+              + '@127.0.0.1:27017/admin';
+            const client = new Mongo(uri);
+            quit(client.getDB('admin').runCommand({ping: 1}).ok ? 0 : 1);
+          } catch (_) { quit(1); }
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-# ==============================================================================
-# VOLÚMENES PERSISTENTES
-# ==============================================================================
+# External protege el ciclo de vida y falla si no existe el recurso identificado.
+# No crea volúmenes vacíos para sustituir los datos conservados.
 volumes:
   postgres_data:
-    name: pokearena_postgres_data
+    external: true
+    name: ${POSTGRES_VOLUME_NAME:-pokearena_pgmaster_data}
   mongo_data:
-    name: pokearena_mongo_data
+    external: true
+    name: ${MONGO_VOLUME_NAME:-pokearena_mongo_data}
+  mongo_config_data:
+    external: true
+    name: ${MONGO_CONFIG_VOLUME_NAME:?Identifique el volumen activo de /data/configdb}
+
+networks:
+  default:
+    external: true
+    name: ${DOCKER_NETWORK_NAME:-poke-arena_default}
