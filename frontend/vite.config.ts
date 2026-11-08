@@ -15,11 +15,11 @@ export default defineConfig({
     // Proxy automático hacia el backend FastAPI para desarrollo local sin problemas de CORS
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:18000",
+        target: process.env.VITE_BACKEND_URL || "http://127.0.0.1:8000",
         changeOrigin: true,
       },
       "/uploads": {
-        target: "http://localhost:8000",
+        target: process.env.VITE_BACKEND_URL || "http://localhost:8000",
         changeOrigin: true,
       },
     },
