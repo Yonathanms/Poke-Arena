@@ -1,2 +1,2 @@
-﻿"""Resolución determinista de turnos."""
+"""Resolución determinista de turnos."""
 

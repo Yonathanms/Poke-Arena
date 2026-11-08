@@ -1,28 +1,128 @@
-﻿"""Agrupa los submódulos del Bloque Catálogo."""
-import importlib.util
-import sys
-from pathlib import Path
+"""Composición SQL sin registrar API, conectar motores ni activar workers.
 
-from fastapi import APIRouter
+Punto único de carga explícita aprobado para gestion-cartas: importlib acepta
+guiones, la sintaxis from/import no. Las dependencias internas son relativas.
+"""
 
-router = APIRouter()
+from importlib import import_module
+from typing import Any
 
-_BASE = Path(__file__).parent  # → src/modules/catalogo/
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.database.postgresql.base import Base
+from src.shared.idempotencia.models import IdempotencyRecordORM
+from src.shared.outbox import OutboxEventORM
+
+_PAQUETE = f"{__package__}.gestion-cartas"
+dominio_cartas = import_module(f"{_PAQUETE}.domain.carta_model")
+puertos_cartas = import_module(f"{_PAQUETE}.ports.cartas_ports")
+dominio_imagenes = import_module(f"{_PAQUETE}.domain.imagen_model")
+puertos_imagenes = import_module(f"{_PAQUETE}.ports.imagen_ports")
+aplicacion_cartas = import_module(f"{_PAQUETE}.services.cartas_service")
+persistencia_creacion = import_module(f"{_PAQUETE}.adapters.sql_creacion_carta")
+proyeccion_domain = import_module(f"{_PAQUETE}.domain.proyeccion_carta")
+outbox_sql = import_module(f"{_PAQUETE}.adapters.sql_outbox_repository")
+outbox_mongo = import_module(f"{_PAQUETE}.adapters.mongo_card_projection")
+outbox_app = import_module(f"{_PAQUETE}.services.proyeccion_service")
+_orm = import_module(f"{_PAQUETE}.adapters.cartas_orm")
+_repositorio = import_module(f"{_PAQUETE}.adapters.sql_carta_repository")
 
 
-def _cargar_ctrl(relativo: str, cache_key: str) -> object:
-    if cache_key not in sys.modules:
-        spec = importlib.util.spec_from_file_location(cache_key, _BASE / relativo)
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[cache_key] = mod
-        spec.loader.exec_module(mod)
-    return sys.modules[cache_key]
+def modelos_persistencia() -> tuple[type[Base], ...]:
+    """Expone seis mapeos únicos sin DDL; metadata parcial no apta para autogenerate."""
+    return (
+        _orm.CartaORM, _orm.HabilidadORM, _orm.ImagenCartaORM, _orm.ContadorCartaORM,
+        IdempotencyRecordORM, OutboxEventORM,
+    )
 
 
-# Siguiente paso: registrar router de ubicaciones
-_ctrl = _cargar_ctrl(
-    "gestion-ubicaciones/controllers/ubicaciones_controller.py",
-    "_pk_ubicaciones_controller",
-)
-router.include_router(_ctrl.router, tags=["Ubicaciones"])
+def crear_repositorio_cartas(session: AsyncSession) -> Any:
+    """Inyecta sesión, sin transacciones ni HTTP; frontera dinámica explícita.
 
+    Any está limitado a esta composición: importlib devuelve módulos sin tipos
+    estáticos de sus miembros. El adaptador implementa el puerto tipado original,
+    verificado por Mypy con su nombre de módulo y por pruebas de composición.
+    """
+    return _repositorio.SqlCartaRepository(session)
+
+
+def crear_procesador_imagenes() -> Any:
+    """Compone el procesador local sin requerir un event loop ni bases."""
+    modulo = import_module(f"{_PAQUETE}.adapters.imagen_carta_adapter")
+    return modulo.ProcesadorImagenPillow()
+
+
+def crear_almacen_imagenes() -> Any:
+    """Compone GridFS en el loop activo mediante el cliente oficial."""
+    from gridfs import AsyncGridFSBucket
+
+    from src.database.mongodb.connection import get_mongo_db
+    from src.shared.config import get_settings
+
+    modulo = import_module(f"{_PAQUETE}.adapters.mongo_carta_repository")
+    bucket = AsyncGridFSBucket(get_mongo_db(), bucket_name=get_settings().MONGO_GRIDFS_BUCKET)
+    return modulo.AlmacenImagenGridFS(bucket, crear_procesador_imagenes())
+
+
+
+def crear_servicio_crear_carta() -> Any:
+    """Compone el caso de uso para Python, con los clientes oficiales."""
+    from src.database.postgresql.connection import AsyncSessionLocal, engine
+
+    return aplicacion_cartas.CrearCarta(
+        persistencia_creacion.SqlCoordinacionCreacion(engine, AsyncSessionLocal),
+        crear_procesador_imagenes(),
+        crear_almacen_imagenes(),
+    )
+
+
+def router_cartas(administrador: Any) -> Any:
+    """Compone el router del catálogo con la autorización pública de identidad."""
+    modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
+    return modulo.crear_router(administrador, crear_servicio_crear_carta, listar_habilidades)
+
+
+def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
+    """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
+    from src.database.mongodb.connection import get_mongo_db
+    from src.database.mongodb.destinos_outbox import MONGO_F5_BASE
+    from src.database.postgresql.connection import AsyncSessionLocal
+    from src.shared.config import get_settings
+
+    ajustes = get_settings()
+    db = get_mongo_db(conexion_directa=ajustes.MONGO_DB == MONGO_F5_BASE)
+    almacen = outbox_mongo.MongoProyeccionCartas(db["cards_projection"])
+    repo = outbox_sql.SqlOutboxCartas(
+        AsyncSessionLocal, ajustes.OUTBOX_LEASE_SECONDS, ajustes.OUTBOX_MAX_ATTEMPTS
+    )
+    return (
+        outbox_app.ProcesadorOutbox(repo, almacen, ajustes.OUTBOX_RETRY_MAX_SECONDS),
+        almacen,
+        proyeccion_domain.OutboxTemporal,
+    )
+
+
+
+async def listar_habilidades() -> list[tuple[str, str]]:
+    """Compone la lectura administrativa con el repositorio y la sesión oficiales."""
+    from src.database.postgresql.connection import transactional_session
+
+    async with transactional_session() as sesion:
+        repo = crear_repositorio_cartas(sesion)
+        filas = await repo.listar_habilidades()
+        return list(filas)
+
+
+def router_ubicaciones() -> Any:
+    """Compone el router de ubicaciones sin dependencia de autenticación (placeholder auth)."""
+    import importlib.util
+    import pathlib
+
+    _base = pathlib.Path(__file__).parent / "gestion-ubicaciones"
+    _spec = importlib.util.spec_from_file_location(
+        "gestion_ubicaciones.controllers.ubicaciones_controller",
+        _base / "controllers" / "ubicaciones_controller.py",
+    )
+    _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
+    _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+    return _mod.router

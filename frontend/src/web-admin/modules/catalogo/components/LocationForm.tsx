@@ -37,17 +37,17 @@ export function LocationForm({ values, onChange, disabled }: Props) {
     onChange({ ...values, [field]: val });
 
   const setParams = (params: Record<string, unknown>) =>
-    onChange({ ...values, efecto_params: params as FormValues["efecto_params"] });
+    onChange({ ...values, efecto_params: params as unknown as FormValues["efecto_params"] });
 
   const handleEfectoTipo = (tipo: LocationEffectType) =>
     onChange({
       ...values,
       efecto_tipo: tipo,
-      efecto_params: PARAMS_DEFAULT[tipo] as FormValues["efecto_params"],
+      efecto_params: PARAMS_DEFAULT[tipo] as unknown as FormValues["efecto_params"],
     });
 
   const maxEnergia = values.energia_tipo === "FIJA" ? 3 : 2;
-  const params = values.efecto_params as Record<string, unknown>;
+  const params = values.efecto_params as unknown as Record<string, unknown>;
 
   return (
     <div className="flex flex-col gap-4">
