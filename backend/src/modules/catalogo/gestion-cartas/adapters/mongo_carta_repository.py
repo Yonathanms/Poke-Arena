@@ -1,15 +1,158 @@
+"""Almacenamiento GridFS por ID reservado y Repositorio NoSQL de Catálogo."""
+
+from asyncio import to_thread
 import math
 from typing import Any
+
+from bson import ObjectId
+from bson.errors import InvalidId
+from gridfs import AsyncGridFSBucket
+from gridfs.errors import CorruptGridFile, FileExists, NoFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import ConnectionFailure, PyMongoError
+
 from src.database.mongodb.connection import get_mongo_db
-from src.modules.catalogo.gestion_cartas_bridge import (
-    ICartaRepository,
+
+from ..controllers.cartas_dtos import (
     CartaResponseDTO,
     CartaSearchQueryDTO,
     CartaSearchResponseDTO,
 )
+from ..domain.imagen_model import (
+    MAX_IMAGE_BYTES,
+    ArchivoImagen,
+    ImagenAlmacenada,
+    ImagenProcesada,
+    ReferenciasImagen,
+)
+from ..ports.cartas_ports import ICartaRepository
+from ..ports.imagen_ports import (
+    AlmacenImagenPort,
+    ArchivoNoExiste,
+    ContenidoInconsistente,
+    ErrorAlmacenamiento,
+    ErrorGuardadoPar,
+    ErrorImagen,
+    ProcesadorImagenPort,
+)
 
-# Catálogo fallback con datos iniciales oficiales para búsqueda inmediata
+PREFIX = "gridfs:"
+
+
+def _object_id(referencia: str) -> ObjectId:
+    """Acepta únicamente la representación canónica de un ObjectId de GridFS."""
+    if not referencia.startswith(PREFIX):
+        raise ContenidoInconsistente("Referencia GridFS inválida")
+    try:
+        identificador = ObjectId(referencia.removeprefix(PREFIX))
+    except InvalidId:
+        raise ContenidoInconsistente("Referencia GridFS inválida") from None
+    if referencia != PREFIX + str(identificador):
+        raise ContenidoInconsistente("Referencia GridFS no canónica")
+    return identificador
+
+
+def _error_driver(error: PyMongoError) -> ErrorAlmacenamiento:
+    """Clasifica indisponibilidad sin reproducir URL, credenciales ni comandos."""
+    return ErrorAlmacenamiento(reintentable=isinstance(error, ConnectionFailure) or error.timeout)
+
+
+class AlmacenImagenGridFS(AlmacenImagenPort):
+    """Opera sobre un bucket inyectado. Un par pertenece a un solo llamador activo."""
+
+    def __init__(self, bucket: AsyncGridFSBucket, procesador: ProcesadorImagenPort) -> None:
+        """Recibe el bucket compartido y el verificador de contenido."""
+        self._bucket = bucket
+        self._procesador = procesador
+
+    def reservar(self) -> ReferenciasImagen:
+        """Reserva dos ObjectId antes de escribir para identificar resultados inciertos."""
+        return ReferenciasImagen(PREFIX + str(ObjectId()), PREFIX + str(ObjectId()))
+
+    async def recuperar(self, referencia: str) -> bytes:
+        """Lee hasta el límite del contrato y comprueba longitud y fragmentos."""
+        identificador = _object_id(referencia)
+        try:
+            async with await self._bucket.open_download_stream(identificador) as archivo:
+                longitud = archivo.length
+                if not isinstance(longitud, int) or not 0 < longitud <= MAX_IMAGE_BYTES:
+                    raise ContenidoInconsistente("Longitud GridFS fuera de los límites")
+                datos = await archivo.read(MAX_IMAGE_BYTES + 1)
+                if len(datos) != longitud:
+                    raise ContenidoInconsistente("Longitud GridFS discordante")
+                return datos
+        except NoFile:
+            raise ArchivoNoExiste("No existe el archivo GridFS solicitado") from None
+        except CorruptGridFile:
+            raise ContenidoInconsistente("Los fragmentos GridFS son inconsistentes") from None
+        except PyMongoError as error:
+            raise _error_driver(error) from None
+
+    async def _guardar(self, referencia: str, nombre: str, datos: bytes) -> None:
+        """Reutiliza un ID completo solo cuando los bytes coinciden exactamente."""
+        try:
+            existente = await self.recuperar(referencia)
+        except ArchivoNoExiste:
+            try:
+                await self._bucket.upload_from_stream_with_id(_object_id(referencia), nombre, datos)
+            except FileExists:
+                raise ContenidoInconsistente("Escritura en conflicto para el ID") from None
+            except PyMongoError as error:
+                raise _error_driver(error) from None
+        else:
+            if existente != datos:
+                raise ContenidoInconsistente("El ID reservado contiene otros bytes")
+
+    async def guardar_par(
+        self,
+        referencias: ReferenciasImagen,
+        imagen: ImagenProcesada,
+    ) -> ImagenAlmacenada:
+        """Confirma ambos archivos o expone el progreso. No borra datos ante fallos."""
+        if _object_id(referencias.original) == _object_id(referencias.miniatura):
+            raise ContenidoInconsistente("Original y miniatura requieren IDs distintos")
+        for archivo in (imagen.original, imagen.miniatura):
+            if not 0 < len(archivo.datos) <= MAX_IMAGE_BYTES:
+                raise ContenidoInconsistente("Binario fuera de los límites de almacenamiento")
+        confirmadas: list[str] = []
+        try:
+            for referencia, nombre, archivo in (
+                (referencias.original, "original", imagen.original),
+                (referencias.miniatura, "thumbnail.webp", imagen.miniatura),
+            ):
+                await self._guardar(referencia, nombre, archivo.datos)
+                confirmadas.append(referencia)
+        except ErrorImagen as error:
+            raise ErrorGuardadoPar(referencias, tuple(confirmadas), error) from None
+        return ImagenAlmacenada(referencias, imagen.original.metadatos, imagen.miniatura.metadatos)
+
+    async def verificar_par(self, imagen: ImagenAlmacenada) -> None:
+        """Contrasta ambos binarios recuperados con los metadatos autoritativos."""
+        original = await self.recuperar(imagen.referencias.original)
+        miniatura = await self.recuperar(imagen.referencias.miniatura)
+        await to_thread(
+            self._procesador.verificar,
+            ImagenProcesada(
+                ArchivoImagen(original, imagen.original),
+                ArchivoImagen(miniatura, imagen.miniatura),
+            ),
+        )
+
+    async def eliminar(self, referencia: str) -> None:
+        """Elimina por ID propio confirmado, fuera de cualquier escritura activa."""
+        try:
+            await self._bucket.delete(_object_id(referencia))
+        except NoFile:
+            # El driver elimina chunks de ese ID incluso si falta el documento files.
+            return
+        except PyMongoError as error:
+            raise _error_driver(error) from None
+
+
+# ------------------------------------------------------------------------------
+# Adaptador NoSQL de Consulta y Búsqueda de Cartas (Catálogo / Jugador)
+# ------------------------------------------------------------------------------
+
 CATALOGO_SEMILLA: list[dict[str, Any]] = [
     {
         "id": "c1",
@@ -125,25 +268,25 @@ CATALOGO_SEMILLA: list[dict[str, Any]] = [
         "coste_energia": 3,
         "puntos_vida": 175,
         "puntos_ataque": 165,
-        "descripcion": "Su boca parece una puerta directa al inframundo.",
+        "descripcion": "Su boca gigantesca conecta directamente con el más allá.",
         "imagen_url": "https://images.pokemontcg.io/swsh8/157_hires.png",
         "imagen_miniatura_url": "https://images.pokemontcg.io/swsh8/157.png",
-        "precio": 36.00,
+        "precio": 31.00,
         "activo": True,
     },
     {
         "id": "c9",
-        "nombre": "Rayquaza VMAX",
+        "nombre": "Dragonite Primigenio",
         "codigo": "PKA-009",
-        "tipo": "ELE",
-        "rareza": "LEGENDARIA",
-        "coste_energia": 4,
+        "tipo": "INC",
+        "rareza": "RARA",
+        "coste_energia": 3,
         "puntos_vida": 200,
-        "puntos_ataque": 210,
-        "descripcion": "Habita en la capa de ozono y desciende envuelto en relámpagos.",
-        "imagen_url": "https://images.pokemontcg.io/swsh7/111_hires.png",
-        "imagen_miniatura_url": "https://images.pokemontcg.io/swsh7/111.png",
-        "precio": 68.00,
+        "puntos_ataque": 175,
+        "descripcion": "Vuela tranquilamente sobre los mares socorriendo a los navegantes.",
+        "imagen_url": "https://images.pokemontcg.io/pgo/49_hires.png",
+        "imagen_miniatura_url": "https://images.pokemontcg.io/pgo/49.png",
+        "precio": 21.00,
         "activo": True,
     },
     {
@@ -151,7 +294,7 @@ CATALOGO_SEMILLA: list[dict[str, Any]] = [
         "nombre": "Arcanine Ígneo",
         "codigo": "PKA-010",
         "tipo": "FUE",
-        "rareza": "RARA",
+        "rareza": "INFRECUENTE",
         "coste_energia": 2,
         "puntos_vida": 160,
         "puntos_ataque": 130,
@@ -252,49 +395,53 @@ class MongoCartaRepository(ICartaRepository):
 
     async def buscar_cartas(self, params: CartaSearchQueryDTO) -> CartaSearchResponseDTO:
         """Busca cartas aplicando filtros de texto, tipo y rareza."""
-        # Intenta consultar MongoDB con timeout estricto si está disponible; de lo contrario usa catálogo local
         try:
             import asyncio
             db = self._get_db()
-            collection = db["cards_catalog"]
+            # Preferir la colección de proyecciones desnormalizada oficial
+            collection = db["cards_projection"] if "cards_projection" in await db.list_collection_names() else db["cards_catalog"]
 
-            query: dict[str, Any] = {"activo": True}
+            query: dict[str, Any] = {}
             if params.q:
                 regex_pattern = {"$regex": params.q.strip(), "$options": "i"}
                 query["$or"] = [
                     {"nombre": regex_pattern},
+                    {"name": regex_pattern},
                     {"codigo": regex_pattern},
+                    {"code": regex_pattern},
                     {"descripcion": regex_pattern},
                 ]
             if params.tipo:
-                query["tipo"] = params.tipo.value
+                val = params.tipo.value if hasattr(params.tipo, "value") else str(params.tipo)
+                query["$or"] = query.get("$or", []) + [{"tipo": val}, {"card_type": val}]
             if params.rareza:
-                query["rareza"] = params.rareza.value
+                val = params.rareza.value if hasattr(params.rareza, "value") else str(params.rareza)
+                query["$or"] = query.get("$or", []) + [{"rareza": val}, {"rarity": val}]
 
-            # Timeout de 500ms para no bloquear si no hay base de datos conectada
             total = await asyncio.wait_for(collection.count_documents(query), timeout=0.5)
-            skip = (params.pagina - 1) * params.limite
+            if total > 0:
+                skip = (params.pagina - 1) * params.limite
+                cursor = collection.find(query).skip(skip).limit(params.limite)
+                docs = await asyncio.wait_for(cursor.to_list(length=params.limite), timeout=0.5)
 
-            cursor = collection.find(query).skip(skip).limit(params.limite)
-            docs = await asyncio.wait_for(cursor.to_list(length=params.limite), timeout=0.5)
-
-            if docs:
-                items = [CartaResponseDTO.model_validate(doc) for doc in docs]
-                total_paginas = max(1, math.ceil(total / params.limite))
-                return CartaSearchResponseDTO(
-                    items=items,
-                    total=total,
-                    pagina=params.pagina,
-                    limite=params.limite,
-                    total_paginas=total_paginas,
-                )
+                if docs:
+                    items = [CartaResponseDTO.model_validate(doc) for doc in docs]
+                    total_paginas = max(1, math.ceil(total / params.limite))
+                    return CartaSearchResponseDTO(
+                        items=items,
+                        total=total,
+                        pagina=params.pagina,
+                        limite=params.limite,
+                        total_paginas=total_paginas,
+                    )
         except Exception:
-            # Fallback inmediato sin bloquear la respuesta
             pass
 
-        # Búsqueda en memoria resiliente
+        # Búsqueda en memoria con catálogo semilla fallback
         filtradas = []
         q_term = (params.q or "").strip().lower()
+        tipo_str = params.tipo.value if hasattr(params.tipo, "value") else str(params.tipo) if params.tipo else None
+        rareza_str = params.rareza.value if hasattr(params.rareza, "value") else str(params.rareza) if params.rareza else None
 
         for c in CATALOGO_SEMILLA:
             if not c.get("activo", True):
@@ -305,9 +452,9 @@ class MongoCartaRepository(ICartaRepository):
                 desc = str(c.get("descripcion", "")).lower()
                 if q_term not in nombre and q_term not in codigo and q_term not in desc:
                     continue
-            if params.tipo and c.get("tipo") != params.tipo.value:
+            if tipo_str and c.get("tipo") != tipo_str:
                 continue
-            if params.rareza and c.get("rareza") != params.rareza.value:
+            if rareza_str and c.get("rareza") != rareza_str:
                 continue
             filtradas.append(c)
 
@@ -329,12 +476,19 @@ class MongoCartaRepository(ICartaRepository):
     async def obtener_por_id_o_codigo(self, identificador: str) -> CartaResponseDTO | None:
         try:
             db = self._get_db()
-            collection = db["cards_catalog"]
-            doc = await collection.find_one({
-                "$or": [{"id": identificador}, {"codigo": identificador}]
-            })
-            if doc:
-                return CartaResponseDTO.model_validate(doc)
+            for col_name in ("cards_projection", "cards_catalog"):
+                if col_name in await db.list_collection_names():
+                    collection = db[col_name]
+                    doc = await collection.find_one({
+                        "$or": [
+                            {"_id": identificador},
+                            {"id": identificador},
+                            {"codigo": identificador},
+                            {"code": identificador},
+                        ]
+                    })
+                    if doc:
+                        return CartaResponseDTO.model_validate(doc)
         except Exception:
             pass
 

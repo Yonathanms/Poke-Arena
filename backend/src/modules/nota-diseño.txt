@@ -52,8 +52,8 @@ Cada submódulo DEBE contener exactamente estas 5 carpetas:
 
   📁 domain/
      - ¿Qué hace? Define las entidades del juego y sus reglas fundamentales.
-     - Contiene: Los modelos de base de datos SQLAlchemy (*_model.py).
-     - REGLA: Es la estructura oficial de la tabla en PostgreSQL.
+     - Contiene: Entidades y reglas puras (*_model.py), sin SQLAlchemy.
+     - REGLA aprobada 1B.2A: los mapeos ORM pertenecen a adapters/.
 
   📁 ports/
      - ¿Qué hace? Define los CONTRATOS o interfaces abstractas (equivalente

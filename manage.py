@@ -55,6 +55,8 @@ def cmd_setup_env(_args: argparse.Namespace) -> None:
     env_example = ROOT_DIR / ".env.example"
     if not env_file.exists() and env_example.exists():
         shutil.copy(env_example, env_file)
+        if not IS_WINDOWS:
+            env_file.chmod(0o600)
         print("\n[OK] Archivo .env generado exitosamente a partir de .env.example.")
     elif env_file.exists():
         print("\n[INFO] El archivo .env ya existe. No se sobrescribió.")
@@ -93,9 +95,13 @@ def cmd_install(_args: argparse.Namespace) -> None:
 
 
 def cmd_dbs(_args: argparse.Namespace) -> None:
-    """Inicia las bases de datos en Docker (PostgreSQL :5432 y MongoDB :27017)."""
+    """Inicia servicios sin recrear contenedores existentes ni aplicar cambios pendientes.
+
+    Compose verifica los recursos externos. Una recreación requiere revisar
+    dependencias, respaldo y autorización; este atajo no la ejecuta.
+    """
     print("\n[Docker] Iniciando PostgreSQL (:5432) y MongoDB (:27017)...")
-    run_cmd(["docker", "compose", "up", "-d"])
+    run_cmd(["docker", "compose", "up", "-d", "--no-recreate"])
 
 
 def cmd_stop(_args: argparse.Namespace) -> None:
@@ -130,17 +136,21 @@ def cmd_dev_frontend(_args: argparse.Namespace) -> None:
 
 
 def cmd_lint(_args: argparse.Namespace) -> None:
-    """Ejecuta el linter (Ruff) y el verificador de tipos (Mypy)."""
+    """Valida estilo y tipos del backend con la configuración oficial."""
     py = get_backend_python()
-    ruff_bin = BACKEND_DIR / ".venv" / ("Scripts/ruff.exe" if IS_WINDOWS else "bin/ruff")
-    mypy_bin = BACKEND_DIR / ".venv" / ("Scripts/mypy.exe" if IS_WINDOWS else "bin/mypy")
 
     print("\n[1/2] Verificando con Ruff...")
-    run_cmd([str(ruff_bin), "check", "backend/src"], cwd=ROOT_DIR)
+    run_cmd([str(py), "-m", "ruff", "check", "src"], cwd=BACKEND_DIR)
 
     print("\n[2/2] Verificando con Mypy...")
-    run_cmd([str(mypy_bin), "backend/src"], cwd=ROOT_DIR)
-    print("\n[OK] Código 100% conforme.")
+    # El descubrimiento por rutas de Mypy corta el nombre al encontrar un guion.
+    # Pasar los nombres completos conserva el contexto de los imports relativos.
+    modules = []
+    for path in sorted((BACKEND_DIR / "src").rglob("*.py")):
+        name = ".".join(path.relative_to(BACKEND_DIR).with_suffix("").parts)
+        modules.extend(("-m", name.removesuffix(".__init__")))
+    run_cmd([str(py), "-m", "mypy", "--config-file", "pyproject.toml", *modules], cwd=BACKEND_DIR)
+    print("\n[OK] Ruff y Mypy aprobaron el código del backend.")
 
 
 def cmd_test(_args: argparse.Namespace) -> None:
