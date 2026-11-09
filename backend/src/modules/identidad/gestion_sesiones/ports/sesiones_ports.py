@@ -3,11 +3,15 @@
 from datetime import datetime
 from typing import Protocol
 
-from ..domain.sesion_model import Rol
+from ..domain.sesion_model import PerfilUsuario, Rol
 
 
 class SesionesPort(Protocol):
     """Persiste sesiones opacas y valida sus identidades actuales."""
+
+    async def obtener_perfil(self, id_usuario: str) -> PerfilUsuario | None:
+        """Devuelve la información de la cuenta y estadísticas del jugador en SQL."""
+        ...
 
     async def crear(
         self,

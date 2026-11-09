@@ -40,6 +40,8 @@ export interface PlatformSessionResponseDTO {
   readonly expires_in: number;
   readonly user_id: string;
   readonly role: PlatformRole;
+  readonly email?: string | null;
+  readonly is_new_user?: boolean;
 }
 
 /**
@@ -51,6 +53,8 @@ export interface ActiveSessionSnapshot {
   readonly userId: string;
   readonly role: PlatformRole;
   readonly expiresAtMs: number;
+  readonly email?: string | null;
+  readonly isNewUser?: boolean;
 }
 
 /** Motivos por los cuales una sesión en memoria deja de estar activa. */

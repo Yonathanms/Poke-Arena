@@ -45,7 +45,9 @@ export interface AdminAuthErrorInfo {
 export interface UseAdminSessionResult {
   readonly status: AdminAuthStatus;
   readonly session: ActiveSessionSnapshot | null;
+  readonly isAuthenticated: boolean;
   readonly isAdminAuthenticated: boolean;
+  readonly isPlayerAuthenticated: boolean;
   readonly isAuthenticating: boolean;
   readonly isLoggingOut: boolean;
   readonly remainingSeconds: number;
@@ -285,12 +287,21 @@ export function useAdminSession(): UseAdminSessionResult {
       setIsLoggingOut(true);
       setAuthError(null);
 
+      // Deshabilitar auto-select de Google para que el siguiente inicio solicite cuenta limpia
+      if (typeof window !== "undefined" && window.google?.accounts?.id) {
+        try {
+          window.google.accounts.id.disableAutoSelect();
+        } catch {
+          // Ignorar si el SDK de Google no está disponible
+        }
+      }
+
       try {
         const result = await logoutPlatformSession(options);
         if (result.warningMessage) {
           setLogoutNotice(result.warningMessage);
         } else {
-          setLogoutNotice("Sesión administrativa cerrada correctamente.");
+          setLogoutNotice("Sesión cerrada correctamente.");
         }
         return result;
       } finally {
@@ -301,7 +312,9 @@ export function useAdminSession(): UseAdminSessionResult {
     []
   );
 
+  const isAuthenticated = session !== null;
   const isAdminAuthenticated = session !== null && session.role === "PLATFORM_ADMIN";
+  const isPlayerAuthenticated = session !== null && session.role === "PLAYER";
 
   let status: AdminAuthStatus = "unauthenticated";
   if (isAuthenticating) {
@@ -318,7 +331,9 @@ export function useAdminSession(): UseAdminSessionResult {
   return {
     status,
     session,
+    isAuthenticated,
     isAdminAuthenticated,
+    isPlayerAuthenticated,
     isAuthenticating,
     isLoggingOut,
     remainingSeconds,

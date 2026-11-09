@@ -1,5 +1,6 @@
 """Intercambio OIDC y dependencias de autenticación de plataforma."""
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -25,6 +26,8 @@ from ..domain.sesion_model import (
     SesionEmitida,
 )
 from ..services.sesiones_service import Sesiones
+
+logger = logging.getLogger(__name__)
 
 
 class CredencialGoogle(BaseModel):
@@ -65,6 +68,18 @@ class RespuestaSesion(BaseModel):
     role: Rol
     email: str | None = None
     is_new_user: bool = False
+
+
+class RespuestaPerfil(BaseModel):
+    """Información de la cuenta y perfil del jugador en PostgreSQL."""
+
+    user_id: str
+    email: str | None = None
+    role: Rol
+    elo: int = 0
+    cubes: int = 0
+    has_received_initial_collection: bool = False
+    created_at: str | None = None
 
 
 def crear_router(
@@ -168,14 +183,17 @@ def crear_router(
             email = getattr(identidad, "email", None)
             sesion = await servicio().emitir(str(identidad), email=email)
         except IdentidadInvalida:
+            logger.warning("Fallo al autenticar credencial Google: token inválido")
             raise problema(
                 401,
                 "google_credencial_invalida",
                 "El ID token de Google no es válido.",
             ) from None
         except IdentidadNoDisponible:
+            logger.error("Servicio de verificación de Google no disponible")
             raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
-        except Exception:
+        except Exception as exc:
+            logger.exception("Error interno al procesar inicio de sesión Google: %s", exc)
             raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
         return _respuesta_sesion(sesion, response)
 
@@ -218,6 +236,35 @@ def crear_router(
     async def login_google(request: Request, response: Response) -> RespuestaSesion:
         """Endpoint estándar de login Google para clientes web y móviles (200 OK)."""
         return await _intercambiar_google(request, response)
+
+    @router.get(
+        "/me",
+        response_model=RespuestaPerfil,
+        operation_id="getAuthenticatedProfile",
+        summary="Obtener perfil del usuario autenticado y estado de juego",
+        responses=respuestas_documentadas(
+            {401: "Sesión requerida", 503: "Identidad no disponible"}
+        ),
+    )
+    async def obtener_mi_perfil(
+        principal: Principal = Depends(jugador),
+    ) -> RespuestaPerfil:
+        """Devuelve los datos de la cuenta y el perfil de jugador desde PostgreSQL."""
+        try:
+            perfil = await servicio().obtener_perfil(principal.id)
+            return RespuestaPerfil(
+                user_id=perfil.user_id,
+                email=perfil.email,
+                role=perfil.role,
+                elo=perfil.elo,
+                cubes=perfil.cubes,
+                has_received_initial_collection=perfil.has_received_initial_collection,
+                created_at=perfil.created_at,
+            )
+        except IdentidadNoDisponible:
+            raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
+        except Exception:
+            raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
 
     return router, administrador, jugador
 

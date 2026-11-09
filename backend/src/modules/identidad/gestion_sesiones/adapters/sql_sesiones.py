@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.database.postgresql.revisiones import REVISIONES_IDENTIDAD_LOCAL
 
-from ..domain.sesion_model import IdentidadLimitada, IdentidadNoDisponible, Rol
+from ..domain.sesion_model import (
+    IdentidadLimitada,
+    IdentidadNoDisponible,
+    PerfilUsuario,
+    Rol,
+)
 from .password_local import crear_hash, verificar_hash
 
 
@@ -236,6 +241,39 @@ class SqlSesiones:
                     WHERE token_hash=:huella AND revoked_at IS NULL
                 """),
                     {"huella": huella},
+                )
+        except SQLAlchemyError:
+            raise IdentidadNoDisponible() from None
+
+    async def obtener_perfil(self, id_usuario: str) -> PerfilUsuario | None:
+        """Consulta identity_users y player_profiles para verificar la conexión a SQL."""
+        try:
+            async with self._factory() as sesion:
+                fila = (
+                    await sesion.execute(
+                        text("""
+                            SELECT u.id, u.email, u.role,
+                                   COALESCE(p.elo, 0) AS elo,
+                                   COALESCE(p.cubes, 0) AS cubes,
+                                   COALESCE(p.has_received_initial_collection, false) AS has_col,
+                                   u.created_at::text AS created_at
+                            FROM identity_users u
+                            LEFT JOIN player_profiles p ON p.user_id = u.id
+                            WHERE u.id = :id
+                        """),
+                        {"id": id_usuario},
+                    )
+                ).one_or_none()
+                if fila is None:
+                    return None
+                return PerfilUsuario(
+                    user_id=str(fila[0]),
+                    email=fila[1] if fila[1] is None else str(fila[1]),
+                    role="PLATFORM_ADMIN" if str(fila[2]) == "PLATFORM_ADMIN" else "PLAYER",
+                    elo=int(fila[3]),
+                    cubes=int(fila[4]),
+                    has_received_initial_collection=bool(fila[5]),
+                    created_at=str(fila[6]) if fila[6] is not None else None,
                 )
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None

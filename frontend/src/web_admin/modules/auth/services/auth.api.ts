@@ -212,6 +212,40 @@ export async function loginWithLocalMasterAdmin(
 }
 
 /**
+ * Inicia sesión mediante Google OIDC (`POST /api/v1/identity/login/google`).
+ * Acepta tanto jugadores como administradores, inicializa la sesión en memoria
+ * y devuelve el snapshot inmutable.
+ */
+export async function loginWithGoogleIdToken(
+  idToken: string,
+  options?: AuthServiceRequestOptions
+): Promise<ActiveSessionSnapshot> {
+  ensureAuthHttpBridgeConfigured();
+
+  const response = await requestApiWithMeta<PlatformSessionResponseDTO>("/identity/login/google", {
+    method: "POST",
+    requiresAuth: false,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id_token: idToken }),
+    fetchImpl: options?.fetchImpl,
+    signal: options?.signal,
+  });
+
+  const snapshot = setPlatformSession(response.data);
+  if (!snapshot) {
+    throw new ApiHttpError({
+      status: 502,
+      code: "respuesta_sesion_invalida",
+      detail: "No fue posible inicializar la sesión de usuario.",
+      title: "Bad Gateway",
+      correlationId: response.correlationId,
+    });
+  }
+
+  return snapshot;
+}
+
+/**
  * Cierra la sesión actual invocando `DELETE /api/v1/identity/session` (`204 No Content`)
  * y limpiando inmediatamente el estado en memoria.
  *

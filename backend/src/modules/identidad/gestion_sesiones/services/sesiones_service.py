@@ -4,7 +4,13 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import token_urlsafe
 
-from ..domain.sesion_model import IdentidadInvalida, Principal, Rol, SesionEmitida
+from ..domain.sesion_model import (
+    IdentidadInvalida,
+    PerfilUsuario,
+    Principal,
+    Rol,
+    SesionEmitida,
+)
 from ..ports.sesiones_ports import SesionesPort
 
 
@@ -81,3 +87,10 @@ class Sesiones:
             else "PLAYER"
         )
         return Principal(actor, efectivo, email=email_clean)
+
+    async def obtener_perfil(self, id_usuario: str) -> PerfilUsuario:
+        """Recupera la información del jugador y su estado desde PostgreSQL."""
+        perfil = await self._almacen.obtener_perfil(id_usuario)
+        if perfil is None:
+            raise IdentidadInvalida()
+        return perfil

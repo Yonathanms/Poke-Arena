@@ -76,6 +76,8 @@ export function setPlatformSession(sessionDto: PlatformSessionResponseDTO): Acti
     userId,
     role: sessionDto.role,
     expiresAtMs,
+    email: sessionDto.email ?? null,
+    isNewUser: Boolean(sessionDto.is_new_user),
   });
 
   currentRecord = {

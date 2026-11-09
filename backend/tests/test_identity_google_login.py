@@ -197,6 +197,20 @@ async def test_login_nuevo_jugador_crea_usuario_y_perfil(
         assert isinstance(datos["access_token"], str) and len(datos["access_token"]) == 43
         user_id = datos["user_id"]
 
+        # Consulta al nuevo endpoint de perfil /identity/me
+        me_resp = await cliente.get(
+            "/api/v1/identity/me",
+            headers={"Authorization": f"Bearer {datos['access_token']}"},
+        )
+        assert me_resp.status_code == 200
+        me = me_resp.json()
+        assert me["user_id"] == user_id
+        assert me["role"] == "PLAYER"
+        assert me["email"] == "nuevo1@test.com"
+        assert me["elo"] == 0
+        assert me["cubes"] == 0
+        assert me["has_received_initial_collection"] is False
+
     # Verificación directa en base de datos
     async with db() as session:
         u = (

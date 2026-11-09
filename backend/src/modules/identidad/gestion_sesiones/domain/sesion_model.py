@@ -35,6 +35,19 @@ class DatosIdentidadGoogle:
     picture: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PerfilUsuario:
+    """Datos de la cuenta y perfil de jugador persistidos en PostgreSQL."""
+
+    user_id: str
+    email: str | None
+    role: Rol
+    elo: int
+    cubes: int
+    has_received_initial_collection: bool
+    created_at: str | None = None
+
+
 class IdentidadNoDisponible(Exception):
     """La identidad no se pudo verificar o persistir con seguridad."""
 
