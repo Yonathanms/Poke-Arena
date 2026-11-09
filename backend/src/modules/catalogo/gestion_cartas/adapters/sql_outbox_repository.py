@@ -9,7 +9,9 @@ from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.database.postgresql.revisiones import REVISIONES_CARTAS
+from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_original_activo
+from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA, REVISIONES_CARTAS
+from src.shared.destinos_originales import PG_ORIGINAL
 from src.shared.outbox import OutboxEventORM
 
 from ..domain.proyeccion_carta import (
@@ -109,18 +111,16 @@ class SqlOutboxCartas:
     @staticmethod
     async def _verificar_destino(sesion: AsyncSession) -> None:
         """Impide reclamar filas de una base original o con revisión distinta."""
-        base, admin = (
-            await sesion.execute(
-                text(
-                    "SELECT current_database(), rolsuper FROM pg_roles WHERE rolname = current_user"
-                )
-            )
-        ).one()
-        if not base.startswith("pokearena_alembic_") or admin:
+        identidad = tuple((await sesion.execute(IDENTIDAD_SQL)).one())
+        original = identidad[0] == PG_ORIGINAL[2]
+        permitido = (
+            destino_original_activo(identidad, "outbox") if original
+            else identidad[0].startswith("pokearena_alembic_") and not identidad[3]
+        )
+        if not permitido:
             raise ValueError("destino_postgresql_fuera_de_1f")
-        if await sesion.scalar(text("SELECT version_num FROM alembic_version")) not in (
-            REVISIONES_CARTAS
-        ):
+        revisiones = {REVISION_TIPO_CUENTA} if original else REVISIONES_CARTAS
+        if await sesion.scalar(text("SELECT version_num FROM alembic_version")) not in revisiones:
             raise ValueError("revision_postgresql_fuera_de_1f")
 
     async def proyeccion(

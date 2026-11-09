@@ -22,15 +22,13 @@ const TYPE_OPTIONS: { label: string; value: CardType | 'ALL'; colorClass?: strin
   { label: 'Eléctrico', value: 'ELE', colorClass: 'text-amber-400 border-amber-500/30' },
   { label: 'Psíquico', value: 'PSI', colorClass: 'text-purple-400 border-purple-500/30' },
   { label: 'Lucha', value: 'LUC', colorClass: 'text-orange-400 border-orange-500/30' },
-  { label: 'Incoloro', value: 'INC', colorClass: 'text-slate-400 border-slate-500/30' },
 ];
 
 const RARITY_OPTIONS: { label: string; value: CardRarity | 'ALL' }[] = [
   { label: 'Todas', value: 'ALL' },
   { label: 'Común', value: 'COMUN' },
-  { label: 'Infrecuente', value: 'INFRECUENTE' },
+  { label: 'Poco Común', value: 'POCO_COMUN' },
   { label: 'Rara', value: 'RARA' },
-  { label: 'Épica', value: 'EPICA' },
   { label: 'Legendaria', value: 'LEGENDARIA' },
 ];
 

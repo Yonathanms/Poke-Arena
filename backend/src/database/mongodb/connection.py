@@ -7,6 +7,7 @@ from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 
 from src.shared.config import get_settings
+from src.shared.destinos_originales import MONGO_ORIGINAL, ROLES_MONGO_ORIGINAL, ProcesoOriginal
 
 _clients: dict[asyncio.AbstractEventLoop, AsyncMongoClient[dict[str, Any]]] = {}
 
@@ -37,6 +38,18 @@ def get_mongo_db(*, conexion_directa: bool = False) -> AsyncDatabase[dict[str, A
     """Devuelve la base configurada sin crearla ni modificar sus colecciones."""
     client = get_mongo_client(conexion_directa=conexion_directa)
     return client[get_settings().MONGO_DB]
+
+
+async def verificar_mongo_original(proceso: ProcesoOriginal) -> None:
+    """Confirma el servidor y la cuenta autenticada antes de operar."""
+    db = get_mongo_db(conexion_directa=True)
+    estado = await db.command("connectionStatus")
+    if (
+        await db.client.address != MONGO_ORIGINAL[:2] or db.name != MONGO_ORIGINAL[2]
+        or estado["authInfo"]["authenticatedUsers"]
+        != [{"user": ROLES_MONGO_ORIGINAL[proceso], "db": MONGO_ORIGINAL[2]}]
+    ):
+        raise ValueError("identidad_mongodb_original_no_autorizada")
 
 
 async def close_mongo_connection() -> None:

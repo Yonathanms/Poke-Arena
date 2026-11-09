@@ -27,6 +27,64 @@ BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 IS_WINDOWS = platform.system() == "Windows"
 
+_DEV_SQL_GRANTS = """
+GRANT USAGE ON SCHEMA public TO orm_media_test;
+GRANT SELECT ON alembic_version, catalog_abilities TO orm_media_test;
+GRANT SELECT, UPDATE ON catalog_card_code_counters TO orm_media_test;
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  catalog_cards, catalog_card_images, shared_idempotency_records,
+  shared_outbox, identity_sessions,
+  locations, outbox_events, idempotency_records
+TO orm_media_test;
+REVOKE UPDATE, DELETE, TRUNCATE ON public.identity_users FROM orm_media_test;
+REVOKE UPDATE (id, provider, provider_subject, role, created_at, local_password_hash)
+ON public.identity_users FROM orm_media_test;
+GRANT SELECT, INSERT ON public.identity_users TO orm_media_test;
+GRANT UPDATE (email, updated_at, local_failed_attempts, local_blocked_until)
+ON public.identity_users TO orm_media_test;
+REVOKE UPDATE, DELETE ON public.player_profiles, public.player_cards, public.cube_transactions
+FROM orm_media_test;
+GRANT SELECT, INSERT ON public.player_profiles, public.player_cards, public.cube_transactions
+TO orm_media_test;
+GRANT UPDATE (cubes, has_received_initial_collection, updated_at) ON public.player_profiles
+TO orm_media_test;
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+    GRANT USAGE ON SCHEMA public TO poke_api_user;
+    GRANT SELECT ON alembic_version, catalog_abilities TO poke_api_user;
+    GRANT SELECT, UPDATE ON catalog_card_code_counters TO poke_api_user;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON
+      catalog_cards, catalog_card_images, shared_idempotency_records,
+      shared_outbox, identity_sessions,
+      locations, outbox_events, idempotency_records
+    TO poke_api_user;
+    REVOKE UPDATE, DELETE, TRUNCATE ON public.identity_users FROM poke_api_user;
+    REVOKE UPDATE (id, provider, provider_subject, role, created_at, local_password_hash)
+    ON public.identity_users FROM poke_api_user;
+    GRANT SELECT, INSERT ON public.identity_users TO poke_api_user;
+    GRANT UPDATE (email, updated_at, local_failed_attempts, local_blocked_until)
+    ON public.identity_users TO poke_api_user;
+    REVOKE UPDATE, DELETE ON public.player_profiles, public.player_cards, public.cube_transactions
+    FROM poke_api_user;
+    GRANT SELECT, INSERT ON public.player_profiles, public.player_cards, public.cube_transactions
+    TO poke_api_user;
+    GRANT UPDATE (cubes, has_received_initial_collection, updated_at) ON public.player_profiles
+    TO poke_api_user;
+  END IF;
+  IF EXISTS (
+    SELECT FROM pg_attribute
+    WHERE attrelid = 'public.player_profiles'::regclass
+      AND attname = 'initial_pack_opened_at' AND NOT attisdropped
+  ) THEN
+    GRANT UPDATE (initial_pack_opened_at) ON public.player_profiles TO orm_media_test;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+      GRANT UPDATE (initial_pack_opened_at) ON public.player_profiles TO poke_api_user;
+    END IF;
+  END IF;
+END $$;
+"""
+
 
 def get_backend_python() -> Path:
     """Ruta al Python del entorno virtual."""
@@ -61,6 +119,20 @@ def run_quiet(cmd: list[str], input_data: str | None = None) -> tuple[int, str, 
     stdout = res.stdout.decode("utf-8", errors="replace")
     stderr = res.stderr.decode("utf-8", errors="replace")
     return res.returncode, stdout, stderr
+
+
+def _aplicar_permisos_desarrollo() -> None:
+    """Aplica los permisos en una transacción y detiene el CLI ante un error."""
+    code, _, _ = run_quiet(
+        [
+            "docker", "exec", "-i", "pokearena-postgres",
+            "psql", "-X", "-v", "ON_ERROR_STOP=1", "--single-transaction",
+            "-U", "postgres", "-d", "pokearena_alembic_frontend_dev", "-f", "-",
+        ],
+        input_data=_DEV_SQL_GRANTS,
+    )
+    if code != 0:
+        raise SystemExit("No se pudieron aplicar los permisos de desarrollo.")
 
 
 # ------------------------------------------------------------------------------
@@ -185,32 +257,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pokearena_alembic_fro
 
     # 5. Otorgar permisos a orm_media_test y poke_api_user
     print("\n[4/5] Otorgando permisos de tablas a los usuarios de aplicación...")
-    sql_grants = """
-GRANT USAGE ON SCHEMA public TO orm_media_test;
-GRANT SELECT ON alembic_version, catalog_abilities TO orm_media_test;
-GRANT SELECT, UPDATE ON catalog_card_code_counters TO orm_media_test;
-GRANT SELECT, INSERT, UPDATE, DELETE ON
-  catalog_cards, catalog_card_images, shared_idempotency_records,
-  shared_outbox, identity_users, identity_sessions,
-  locations, outbox_events, idempotency_records,
-  player_profiles, cube_transactions, player_cards
-TO orm_media_test;
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
-    GRANT USAGE ON SCHEMA public TO poke_api_user;
-    GRANT SELECT ON alembic_version, catalog_abilities TO poke_api_user;
-    GRANT SELECT, UPDATE ON catalog_card_code_counters TO poke_api_user;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON
-      catalog_cards, catalog_card_images, shared_idempotency_records,
-      shared_outbox, identity_users, identity_sessions,
-      locations, outbox_events, idempotency_records,
-      player_profiles, cube_transactions, player_cards
-    TO poke_api_user;
-  END IF;
-END $$;
-"""
-    run_quiet(["docker", "exec", "-i", "pokearena-postgres", "psql", "-U", "postgres", "-d", "pokearena_alembic_frontend_dev"], input_data=sql_grants)
+    _aplicar_permisos_desarrollo()
 
     # 6. Configurar índice único de MongoDB
     print("\n[5/5] Configurando colecciones e índices en MongoDB...")
@@ -266,32 +313,7 @@ def cmd_migrate(_args: argparse.Namespace) -> None:
     run_cmd([str(py), "-m", "alembic", "-c", "alembic.ini", "upgrade", "heads"], cwd=BACKEND_DIR, env=migration_env)
 
     print("\n[PostgreSQL] Actualizando permisos de tablas para usuarios de aplicación...")
-    sql_grants = """
-GRANT USAGE ON SCHEMA public TO orm_media_test;
-GRANT SELECT ON alembic_version, catalog_abilities TO orm_media_test;
-GRANT SELECT, UPDATE ON catalog_card_code_counters TO orm_media_test;
-GRANT SELECT, INSERT, UPDATE, DELETE ON
-  catalog_cards, catalog_card_images, shared_idempotency_records,
-  shared_outbox, identity_users, identity_sessions,
-  locations, outbox_events, idempotency_records,
-  player_profiles, cube_transactions, player_cards
-TO orm_media_test;
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
-    GRANT USAGE ON SCHEMA public TO poke_api_user;
-    GRANT SELECT ON alembic_version, catalog_abilities TO poke_api_user;
-    GRANT SELECT, UPDATE ON catalog_card_code_counters TO poke_api_user;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON
-      catalog_cards, catalog_card_images, shared_idempotency_records,
-      shared_outbox, identity_users, identity_sessions,
-      locations, outbox_events, idempotency_records,
-      player_profiles, cube_transactions, player_cards
-    TO poke_api_user;
-  END IF;
-END $$;
-"""
-    run_quiet(["docker", "exec", "-i", "pokearena-postgres", "psql", "-U", "postgres", "-d", "pokearena_alembic_frontend_dev"], input_data=sql_grants)
+    _aplicar_permisos_desarrollo()
     print("\n[OK] Migraciones aplicadas y permisos actualizados exitosamente.")
 
 

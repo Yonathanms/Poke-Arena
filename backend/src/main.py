@@ -8,9 +8,16 @@ from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from src.database.mongodb.connection import close_mongo_connection, get_mongo_db
+from src.database.mongodb.connection import (
+    close_mongo_connection,
+    get_mongo_db,
+    verificar_mongo_original,
+)
+from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_original_activo
+from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA
 from src.modules.catalogo.catalogo_module import router_cartas, router_ubicaciones
 from src.modules.identidad import identidad_module
+from src.modules.jugadores.jugadores_module import provisionar_google, router_paquete
 from src.shared.config import get_settings
 from src.shared.http_module import registrar_errores
 
@@ -21,6 +28,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from src.database.postgresql.connection import engine
 
     try:
+        if get_settings().ORIGINAL_RUNTIME == "api":
+            async with engine.connect() as conn:
+                identidad = tuple((await conn.execute(IDENTIDAD_SQL)).one())
+                if (
+                    not destino_original_activo(identidad, "api")
+                    or await conn.scalar(text("SELECT version_num FROM alembic_version"))
+                    != REVISION_TIPO_CUENTA
+                ):
+                    raise ValueError("destino_postgresql_original_no_autorizado")
+            await verificar_mongo_original("api")
         yield
     finally:
         await close_mongo_connection()
@@ -30,6 +47,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def crear_app() -> FastAPI:
     """Registra módulos y políticas HTTP sin abrir conexiones."""
     settings = get_settings()
+    settings.verificar_destinos("api")
+    if settings.ORIGINAL_RUNTIME == "api" and (
+        not settings.GOOGLE_OAUTH_CLIENT_ID
+        or not (settings.admin_google_subjects or settings.admin_emails)
+    ):
+        raise ValueError("configuracion_administrativa_original_incompleta")
     app = FastAPI(
         title=settings.APP_NAME,
         version="1.0.0",
@@ -45,7 +68,10 @@ def crear_app() -> FastAPI:
         expose_headers=["X-Correlation-ID", "Retry-After"],
     )
     registrar_errores(app)
-    app.include_router(identidad_module.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(
+        identidad_module.crear_router_identidad(provisionar_google), prefix=settings.API_V1_PREFIX
+    )
+    app.include_router(router_paquete, prefix=settings.API_V1_PREFIX)
     app.include_router(
         router_cartas(
             identidad_module.requerir_administrador,

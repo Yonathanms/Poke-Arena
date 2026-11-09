@@ -29,7 +29,8 @@ export function WelcomeLoginScreen({
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
 
-  const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "";
+  const clientId =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_GOOGLE_OAUTH_CLIENT_ID) || "";
 
   // Manejador del ID Token devuelto por Google
   const handleGoogleCredentialResponse = useCallback(
@@ -45,7 +46,21 @@ export function WelcomeLoginScreen({
         onLoginSuccess(snapshot);
       } catch (err) {
         if (err instanceof ApiHttpError) {
-          setErrorMessage(err.detail || "Error al autenticar con el servidor de Poké-Arena.");
+          if (err.code === "identidad_tipo_en_conflicto") {
+            setErrorMessage(
+              "Esta cuenta fue registrada previamente con un tipo incompatible de autenticación (conflicto de identidad)."
+            );
+          } else if (err.code === "provision_inconsistente") {
+            setErrorMessage(
+              "Se detectó una inconsistencia técnica en la provisión del jugador. Contacta al soporte técnico."
+            );
+          } else if (err.code === "provision_no_disponible") {
+            setErrorMessage(
+              "El servicio de provisión de jugadores no está disponible en este momento. Reintenta iniciar sesión en unos segundos."
+            );
+          } else {
+            setErrorMessage(err.detail || "Error al autenticar con el servidor de Poké-Arena.");
+          }
         } else if (err instanceof Error) {
           setErrorMessage(err.message);
         } else {
@@ -202,7 +217,7 @@ export function WelcomeLoginScreen({
 
           <div className="mt-6 border-t border-slate-800/80 pt-4 text-center">
             <p className="text-[11px] text-slate-500">
-              Sesión protegida con tokens opacos en memoria volátil (<code className="text-slate-400">no-store</code>).
+              Sesión protegida y cifrada en memoria segura.
             </p>
           </div>
         </div>

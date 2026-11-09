@@ -1,9 +1,10 @@
 """Esquemas HTTP de Crear y Buscar Carta, separados del servicio y del dominio."""
 
 from enum import StrEnum
+from re import fullmatch
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from ..services.cartas_service import ResultadoCrearCarta
 
@@ -20,9 +21,8 @@ class TipoCarta(StrEnum):
 
 class RarezaCarta(StrEnum):
     COMUN = "COMUN"
-    INFRECUENTE = "INFRECUENTE"
+    POCO_COMUN = "POCO_COMUN"
     RARA = "RARA"
-    EPICA = "EPICA"
     LEGENDARIA = "LEGENDARIA"
 
 
@@ -120,6 +120,17 @@ class CartaResponseDTO(BaseModel):
     price: float | None = None
     activo: bool = True
     ability_code: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def leer_habilidad_historica(cls, data: Any) -> Any:
+        """Normaliza la proyección antigua sin alterar el documento de origen."""
+        if isinstance(data, dict) and data.get("ability_code") is None:
+            ability = data.get("ability")
+            code = ability.get("code") if isinstance(ability, dict) else None
+            if isinstance(code, str) and fullmatch(r"HAB-[0-9]{3}", code):
+                return {**data, "ability_code": code}
+        return data
 
     model_config = ConfigDict(
         from_attributes=True,

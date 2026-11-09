@@ -3,12 +3,23 @@
 from functools import lru_cache
 from pathlib import Path
 from re import fullmatch
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
+from src.shared.destinos_originales import (
+    PG_ORIGINAL,
+    ROL_MIGRADOR_ORIGINAL,
+    ROL_SQL_ORIGINAL,
+    ProcesoOriginal,
+    impedir_originales_en_pruebas,
+    postgres_protegido,
+    validar_acceso_original,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
@@ -60,6 +71,7 @@ class Settings(EnvironmentSettings):
 
     # Identidad / OAuth
     IDENTITY_LOCAL_ENABLED: bool = False
+    ORIGINAL_RUNTIME: Literal["disabled", "api", "outbox"] = "disabled"
     GOOGLE_OAUTH_CLIENT_ID: str | None = None
     PLATFORM_ADMIN_GOOGLE_SUBJECTS: str = ""
     PLATFORM_ADMIN_EMAILS: str = ""
@@ -149,32 +161,65 @@ class Settings(EnvironmentSettings):
             e.strip().lower() for e in self.PLATFORM_ADMIN_EMAILS.split(",") if e.strip()
         )
 
+    def verificar_destinos(self, proceso: ProcesoOriginal | None = None) -> None:
+        """Valida el par configurado antes de construir clientes de aplicación."""
+        if proceso is not None and self.ORIGINAL_RUNTIME not in {"disabled", proceso}:
+            raise ValueError("opt_in_original_de_otro_proceso")
+        try:
+            sql = make_url(self.DATABASE_URL)
+        except (ArgumentError, ValueError):
+            raise ValueError("destino_postgresql_invalido") from None
+        validar_acceso_original(
+            sql, self.MONGO_URL, self.MONGO_DB,
+            self.ENVIRONMENT, self.ORIGINAL_RUNTIME,
+        )
 
-class MigrationSettings(EnvironmentSettings):
+
+class MigrationOptIn(EnvironmentSettings):
+    """Lee la habilitación incluso para operaciones de Alembic sin conexión."""
+
+    ORIGINAL_MIGRATION_ENABLED: bool = False
+
+
+class MigrationSettings(MigrationOptIn):
     """Configura Alembic sin cargar URLs/clientes de aplicación o MongoDB.
 
-    En 1B.1 solo permite bases de validación con prefijo pokearena_alembic_.
+    Por defecto solo admite bases aisladas con prefijo pokearena_alembic_.
     La URL es explícita, sin fallback a DATABASE_URL; se rechaza el rol de API.
     El rol real y sus atributos también se comprueban antes del DDL en env.py.
     """
 
     MIGRATION_DATABASE_URL: str = Field(repr=False, exclude=True)
+    ENVIRONMENT: str = "development"
 
-    @field_validator("MIGRATION_DATABASE_URL")
-    @classmethod
-    def validate_migration_target(cls, value: str) -> str:
-        """Rechaza drivers, roles y destinos ajenos al aislamiento autorizado en 1B.1."""
-        if not value.startswith("postgresql+asyncpg://"):
+    @model_validator(mode="after")
+    def validate_migration_target(self) -> "MigrationSettings":
+        """Acepta un rol aislado o el opt-in independiente de Alembic."""
+        try:
+            url = make_url(self.MIGRATION_DATABASE_URL)
+        except (ArgumentError, ValueError):
+            raise ValueError("Configure MIGRATION_DATABASE_URL con el driver asyncpg") from None
+        if url.drivername != "postgresql+asyncpg":
             raise ValueError("Configure MIGRATION_DATABASE_URL con el driver asyncpg")
-        url = make_url(value)
-        if not url.username or url.username == "poke_api_user":
+        if not url.username or url.username == ROL_SQL_ORIGINAL:
             raise ValueError("Alembic requiere un rol de migración separado de la API")
-        if not url.database or not url.database.startswith("pokearena_alembic_"):
+        if self.ORIGINAL_MIGRATION_ENABLED:
+            if (
+                self.ENVIRONMENT != "development"
+                or (url.host, url.port, url.database) != PG_ORIGINAL
+                or url.username != ROL_MIGRADOR_ORIGINAL or not url.password or url.query
+            ):
+                raise ValueError("destino_original_alembic_no_autorizado")
+        elif postgres_protegido(url) or not (url.database or "").startswith("pokearena_alembic_"):
             raise ValueError("1B.1 solo permite bases aisladas pokearena_alembic_*")
-        return value
+        return self
 
 
 @lru_cache
 def get_settings() -> Settings:
     """Carga y cachea configuración; falla si faltan URLs válidas de aplicación."""
-    return Settings()
+    settings = Settings()
+    settings.verificar_destinos()
+    if settings.ORIGINAL_RUNTIME != "disabled":
+        impedir_originales_en_pruebas()
+    return settings

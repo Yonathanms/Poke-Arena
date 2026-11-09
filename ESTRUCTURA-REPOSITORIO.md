@@ -12,7 +12,6 @@ El proyecto implementa una arquitectura de **Monolito Modular Hexagonal (Ports &
 Poke-Arena/
 ├── docker-compose.yml              # Bases de datos en Docker: PostgreSQL (:5432) y MongoDB (:27017)
 ├── manage.py                       # CLI automatizado de gestión local
-├── .env.example                    # Plantilla de variables de entorno
 ├── .env                            # Variables de entorno locales (ignorado en Git)
 │
 ├── frontend/                       # APLICACIÓN WEB (React 18 + Vite + TypeScript + Tailwind)
@@ -34,16 +33,17 @@ Poke-Arena/
 │       │
 │       ├── web_player/             # Portal de Jugadores
 │       │   └── modules/
-│       │       ├── coleccion/      # Vista de inventario de cartas y mazos
+│       │       ├── catalogo/       # Búsqueda de cartas
 │       │       └── partidas/       # Tablero de juego y emparejamiento
 │       │
 │       └── portal_b2b/             # Portal de Organizaciones B2B (Torneos y Métricas)
 │           └── modules/
 │               └── torneos/        # Gestión de torneos B2B y llaves de API
 │
-└── backend/                        # API REST (Python 3.12 + FastAPI + SQLAlchemy 2.0 + Motor)
+└── backend/                        # API REST (Python 3.12 + FastAPI + SQLAlchemy 2.0 + PyMongo)
+    ├── seed_cartas_ci4.py           # Herramienta local de dry-run y seed autenticado
     ├── alembic/                    # Historial y control de versiones de esquemas SQL
-    │   └── versions/               # Migraciones de PostgreSQL (.py)
+    │   └── versions/               # Migraciones PostgreSQL, cabeza 014_identity_account_immutable
     │
     └── src/
         ├── main.py                 # Entrada de FastAPI, middlewares CORS y ciclo de vida
@@ -57,8 +57,8 @@ Poke-Arena/
         │   └── validacion/         # Esquemas y validadores comunes de Pydantic
         │
         ├── database/               # CAPA DE PERSISTENCIA TÉCNICA
-        │   ├── postgresql/         # Motor SQLAlchemy y función inyectable get_db() (:5432)
-        │   ├── mongodb/            # Cliente Motor para MongoDB de catálogo (:27017)
+        │   ├── postgresql/         # SQLAlchemy Async y get_db(), destino según DATABASE_URL
+        │   ├── mongodb/            # Cliente PyMongo asíncrono para MongoDB
         │   └── outbox_worker.py    # Sincronización asíncrona de PostgreSQL -> MongoDB
         │
         └── modules/                # LÓGICA DE NEGOCIO Y DOMINIO (Capa 3 de la Arquitectura)
@@ -87,7 +87,13 @@ Poke-Arena/
             │       └── adapters/          # Cliente Google OAuth2 / Test Provider local
             │
             ├── jugadores/          # MÓDULO JUGADORES
-            │   ├── coleccion_mazos/       # Colección inicial, mazos e inventario
+            │   ├── jugadores_module.py  # Composición, callback de Google y guard de jugador
+            │   ├── coleccion_mazos/       # Provisión, consulta y apertura del paquete
+            │   │   ├── controllers/      # API del paquete inicial
+            │   │   ├── domain/           # Invariantes y resultados de entrega inicial
+            │   │   ├── ports/            # Unidad de trabajo de provisión
+            │   │   ├── services/         # Provisión, consulta y confirmación de apertura
+            │   │   └── adapters/         # Selección e inventario PostgreSQL
             │   ├── perfil_cuentas/        # Perfil y estadísticas del jugador
             │   ├── emparejamiento/        # Fila clasificatoria
             │   ├── partidas/              # Ciclo de vida de partida
@@ -166,8 +172,8 @@ A continuación se detalla el viaje completo de una petición cuando un Administ
             ▼
 [7. Persistencia Transaccional]
    sql_carta_repository.py
-      ├── INSERT INTO cartas (...)               (en PostgreSQL :5432)
-      └── INSERT INTO outbox (evento="CARTA_CREADA")
+      ├── INSERT INTO catalog_cards (...)
+      └── INSERT INTO shared_outbox (event_type="CardCreated")
             │
             ▼
 [8. Respuesta Inmediata al Usuario]
@@ -208,15 +214,14 @@ A continuación se detalla el viaje completo de una petición cuando un Administ
      * Valida la relación de aspecto 5:7.
      * Genera la versión oficial WebP de 600x840 px.
      * Genera la miniatura de 200x280 px.
-     * Guarda ambos archivos en `./uploads/cartas/`.
+     * El adaptador de almacenamiento guarda el original y la miniatura en el bucket GridFS `card_assets`.
 
 #### Paso 5: Persistencia Transaccional ACID en PostgreSQL
-* El servicio invoca el puerto `CartaRepositoryPort` implementado por `sql_carta_repository.py`.
+* El servicio usa la unidad transaccional de `sql_creacion_carta.py` y el repositorio de `sql_carta_repository.py`.
 * Dentro de una **misma transacción SQL atómica**:
-  1. Guarda la fila de la carta con sus rutas de imagen en la tabla `cartas`.
-  2. Inserta una fila en la tabla `outbox`:  
-     `{ evento: "CARTA_CREADA", payload: { codigo: "PKA-001", nombre: "Pikachu", ... } }`.
-  3. Ejecuta `session.commit()`.
+  1. Guarda la fila en `catalog_cards` y relaciona la imagen por `image_id` con `catalog_card_images`.
+  2. Registra el evento `CardCreated` en `shared_outbox`.
+  3. Confirma la transacción al cerrar la unidad de trabajo.
 
 #### Paso 6: Respuesta de Éxito al Usuario (Criterio de Aceptación)
 * El controlador recibe la carta confirmada y responde al frontend con código **201 Created** y los datos en formato JSON.
@@ -224,8 +229,8 @@ A continuación se detalla el viaje completo de una petición cuando un Administ
 
 #### Paso 7: Sincronización hacia MongoDB en Segundo Plano
 * De forma asíncrona, `outbox_worker.py` (que corre continuamente):
-  1. Lee los eventos no procesados de la tabla `outbox` en PostgreSQL.
-  2. Toma la información de la nueva carta y hace un `update_one(..., upsert=True)` en la colección `cards_catalog` de **MongoDB**.
+  1. Reclama los eventos pendientes de `shared_outbox` en PostgreSQL.
+  2. Actualiza la proyección de Catálogo en `cards_projection` de **MongoDB**.
   3. Marca el evento como procesado en PostgreSQL.
 * A partir de ese milisegundo, cuando cualquier jugador entre a buscar cartas en el catálogo, la búsqueda se ejecuta sobre **MongoDB** a máxima velocidad sin ralentizar a PostgreSQL.
 

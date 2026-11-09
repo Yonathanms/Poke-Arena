@@ -4,18 +4,22 @@
  * Flujo de navegación y seguridad:
  * 1. Visitante no autenticado: Presenta exclusivamente la pantalla pública de bienvenida
  *    y login con Google (`WelcomeLoginScreen` en `shared`).
- * 2. Usuario con rol PLAYER: Presenta la vista principal del jugador (`VistaPrincipalScreen` en
- *    `web_player/modules/vista_principal`), mostrando estadísticas, balance de cubos y confirmación SQL.
- * 3. Usuario con rol PLATFORM_ADMIN: Presenta el panel administrativo (`AdminLayout`) permitiendo
- *    crear cartas, ubicaciones o alternar hacia la vista de jugador.
+ * 2. Usuario con rol PLAYER: Pasa obligatoriamente por el flujo de onboarding de paquete
+ *    inicial (`InitialPackOnboardingScreen` en `web_player/modules/coleccion_inicial`),
+ *    gestionando `PENDING_CATALOG`, `READY_TO_OPEN`, `OPENING`, `REVEALED` y avanzando
+ *    hacia `VistaPrincipalScreen` al confirmar la apertura (`COMPLETED`).
+ * 3. Usuario con rol PLATFORM_ADMIN: Presenta exclusivamente el panel administrativo
+ *    (`AdminLayout`) con acceso a Crear Carta, Crear Ubicación y Buscar Cartas, sin
+ *    acceso cruzado al perfil de jugador.
  */
 
 import React, { useEffect, useState } from "react";
 import { useAdminSession } from "./web_admin/modules/auth/hooks/useAdminSession";
 import { WelcomeLoginScreen } from "./shared/components/WelcomeLoginScreen";
-import { VistaPrincipalScreen } from "./web_player/modules/vista_principal/screens/VistaPrincipalScreen";
+import { InitialPackOnboardingScreen } from "./web_player/modules/coleccion_inicial/screens/InitialPackOnboardingScreen";
 import { CreateCardScreen } from "./web_admin/modules/catalogo/screens/CreateCardScreen";
 import { CreateLocationScreen } from "./web_admin/modules/catalogo/screens/CreateLocationScreen";
+import { SearchCardsScreen } from "./web_player/modules/catalogo/screens/SearchCardsScreen";
 import { AdminLayout } from "./web_admin/shared/AdminLayout";
 
 export interface AppProps {
@@ -35,11 +39,8 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
     logout,
   } = useAdminSession();
 
-  // Subpestaña del panel administrativo: "cartas" | "ubicaciones"
-  const [adminTab, setAdminTab] = useState<"cartas" | "ubicaciones">("cartas");
-
-  // Vista activa para administradores: "admin" (gestión) | "player" (su perfil/vista de jugador)
-  const [activeAdminMode, setActiveAdminMode] = useState<"admin" | "player">("admin");
+  // Subpestaña del panel administrativo: "cartas" | "ubicaciones" | "buscador"
+  const [adminTab, setAdminTab] = useState<"cartas" | "ubicaciones" | "buscador">("cartas");
 
   // Recuerda si hubo una sesión administrativa en el ciclo actual para preservar borradores
   const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
@@ -67,11 +68,12 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
   }
 
   // ---------------------------------------------------------------------------
-  // 2. USUARIO JUGADOR (PLAYER): Vista principal modularizada del jugador
+  // 2. USUARIO JUGADOR (PLAYER): Flujo de onboarding y paquete inicial (US 3.1.1)
+  //    (READY_TO_OPEN -> OPENING -> REVEALED -> COMPLETED / VistaPrincipalScreen)
   // ---------------------------------------------------------------------------
   if (isPlayerAuthenticated) {
     return (
-      <VistaPrincipalScreen
+      <InitialPackOnboardingScreen
         onLogout={logout}
         isLoggingOut={isLoggingOut}
       />
@@ -80,41 +82,22 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
 
   // ---------------------------------------------------------------------------
   // 3. USUARIO ADMINISTRADOR (PLATFORM_ADMIN):
-  //    Puede alternar entre la vista administrativa y la vista de jugador
+  //    Exclusivamente portal administrativo (Crear Carta, Crear Ubicación, Buscar Cartas)
   // ---------------------------------------------------------------------------
-  if (activeAdminMode === "player") {
-    return (
-      <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col">
-        <header className="px-6 py-2.5 bg-slate-900 border-b border-arena-border flex justify-between items-center text-xs">
-          <span className="text-amber-400 font-medium flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            Modo Administrador visualizando Vista de Jugador
-          </span>
-          <button
-            type="button"
-            onClick={() => setActiveAdminMode("admin")}
-            className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
-          >
-            ← Volver al Panel Admin
-          </button>
-        </header>
-        <div className="flex-1">
-          <VistaPrincipalScreen
-            onLogout={logout}
-            isLoggingOut={isLoggingOut}
-          />
-        </div>
-      </div>
-    );
-  }
-
   const preserveWorkspaceInBackground =
     !isAdminAuthenticated &&
     hasEnteredWorkspace &&
     (lastInvalidationReason === "expired" || lastInvalidationReason === "unauthorized_401");
 
   const workspaceContent =
-    children ?? (adminTab === "ubicaciones" ? <CreateLocationScreen /> : <CreateCardScreen />);
+    children ??
+    (adminTab === "ubicaciones" ? (
+      <CreateLocationScreen />
+    ) : adminTab === "buscador" ? (
+      <SearchCardsScreen />
+    ) : (
+      <CreateCardScreen />
+    ));
 
   return (
     <div className="min-h-screen bg-arena-bg text-slate-100">
@@ -148,14 +131,21 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
             >
               Crear Ubicación
             </button>
+            <button
+              type="button"
+              onClick={() => setAdminTab("buscador")}
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                adminTab === "buscador"
+                  ? "bg-arena-accent text-slate-950 shadow"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              Buscar Cartas
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setActiveAdminMode("player")}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 font-medium"
-          >
-            Ver Mi Perfil de Jugador →
-          </button>
+          <div className="text-xs text-slate-400 font-medium">
+            Entorno Administrativo · Poké-Arena
+          </div>
         </div>
         {workspaceContent}
       </AdminLayout>

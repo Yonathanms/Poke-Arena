@@ -5,17 +5,43 @@ from hashlib import sha256
 from secrets import token_urlsafe
 
 from ..domain.sesion_model import (
+    IdentidadEnConflicto,
     IdentidadInvalida,
     PerfilUsuario,
     Principal,
     Rol,
     SesionEmitida,
 )
-from ..ports.sesiones_ports import SesionesPort
+from ..ports.sesiones_ports import IdentidadColeccionPort, SesionesPort
 
 
 def _huella(token: str) -> str:
     return sha256(token.encode()).hexdigest()
+
+
+async def jugador_elegible_para_coleccion(
+    almacen: IdentidadColeccionPort,
+    token: str,
+    *,
+    admins: frozenset[str],
+    admin_emails: frozenset[str],
+) -> str | None:
+    """Resuelve un jugador Google desde el Bearer y excluye identidades reservadas."""
+    fila = await almacen.activa_bloqueada(_huella(token))
+    if fila is None:
+        return None
+    actor, subject, rol, proveedor, email, email_verified = fila
+    # PLAYER persistido implica PLAYER efectivo. La reserva por sub o correo es independiente.
+    if not actor or not subject or proveedor != "GOOGLE" or rol != "PLAYER" or subject in admins:
+        return None
+    correo = email.strip().lower() if email else None
+    if admin_emails:
+        if not correo or correo in admin_emails or not email_verified:
+            return None
+        # El último login puede haber sustituido el correo de una identidad reservada.
+        if await almacen.verifico_correo(actor, admin_emails):
+            return None
+    return actor
 
 
 class Sesiones:
@@ -37,19 +63,28 @@ class Sesiones:
     def _credencial(self) -> tuple[str, datetime]:
         return token_urlsafe(32), datetime.now(UTC) + timedelta(seconds=self._ttl)
 
-    async def emitir(self, subject: str, email: str | None = None) -> SesionEmitida:
+    def _tipo_google(self, subject: str, email: str | None, email_verified: bool) -> Rol:
+        """Determina la categoría compatible con la credencial y política vigentes."""
+        if subject in self._admins:
+            return "PLATFORM_ADMIN"
+        if email is not None and email in self._admin_emails:
+            if email_verified is not True:
+                raise IdentidadEnConflicto()
+            return "PLATFORM_ADMIN"
+        return "PLAYER"
+
+    async def emitir(
+        self, subject: str, email: str | None = None, *, email_verified: bool = False
+    ) -> SesionEmitida:
         """Emite una sesión para un subject que ya verificó el proveedor OIDC."""
         email_clean = email.strip().lower() if email else None
-        es_admin = (subject in self._admins) or (
-            email_clean is not None and email_clean in self._admin_emails
-        )
-        rol: Rol = "PLATFORM_ADMIN" if es_admin else "PLAYER"
+        rol = self._tipo_google(subject, email_clean, email_verified)
         token, expira = self._credencial()
-        actor, es_nuevo = await self._almacen.crear(
-            subject, rol, _huella(token), expira, email=email_clean
+        actor, tipo_persistido, es_nuevo = await self._almacen.crear(
+            subject, rol, _huella(token), expira, email=email_clean, email_verified=email_verified
         )
         return SesionEmitida(
-            Principal(actor, rol, email=email_clean),
+            Principal(actor, tipo_persistido, email=email_clean),
             token,
             self._ttl,
             is_new_user=es_nuevo,
@@ -74,19 +109,16 @@ class Sesiones:
         fila = await self._almacen.activa(_huella(token))
         if fila is None:
             raise IdentidadInvalida()
-        actor, subject, rol, proveedor, email = fila
+        actor, subject, rol, proveedor, email, email_verified = fila
         email_clean = email.strip().lower() if email else None
-        es_admin = (
-            proveedor == "LOCAL"
-            or subject in self._admins
-            or (email_clean is not None and email_clean in self._admin_emails)
-        )
-        efectivo: Rol = (
+        autorizado: Rol = (
             "PLATFORM_ADMIN"
-            if rol == "PLATFORM_ADMIN" and es_admin
-            else "PLAYER"
+            if proveedor == "LOCAL"
+            else self._tipo_google(subject, email_clean, email_verified)
         )
-        return Principal(actor, efectivo, email=email_clean)
+        if rol != autorizado:
+            raise IdentidadEnConflicto()
+        return Principal(actor, autorizado, email=email_clean)
 
     async def obtener_perfil(self, id_usuario: str) -> PerfilUsuario:
         """Recupera la información del jugador y su estado desde PostgreSQL."""

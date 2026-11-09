@@ -12,7 +12,7 @@ from pymongo.uri_parser import parse_uri
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
-from src.database.mongodb.connection import close_mongo_connection
+from src.database.mongodb.connection import close_mongo_connection, verificar_mongo_original
 from src.database.mongodb.destinos_outbox import MONGO_F5_BASE, MONGO_F5_SERVIDOR, PREFIJOS_MONGO_1F
 from src.modules.catalogo.catalogo_module import componer_procesador_outbox
 from src.shared.config import Settings, get_settings
@@ -42,27 +42,41 @@ def _verificar_f5(ajustes: Settings) -> None:
 
 def verificar_configuracion(ajustes: Settings) -> None:
     """Conserva el aislamiento 1F y verifica el par exacto de destinos F5."""
+    if ajustes.ORIGINAL_RUNTIME != "disabled":
+        ajustes.verificar_destinos("outbox")
+        if ajustes.OUTBOX_LEASE_SECONDS <= ajustes.DB_CONNECT_TIMEOUT_SECONDS:
+            raise ValueError("configuracion_outbox_fuera_de_1f")
+        return
     try:
-        pg = urlsplit(ajustes.DATABASE_URL)
-        mongo = urlsplit(ajustes.MONGO_URL)
-    except ValueError:
+        pg = make_url(ajustes.DATABASE_URL)
+        if urlsplit(ajustes.MONGO_URL).scheme != "mongodb":
+            raise ValueError()
+        mongo = parse_uri(ajustes.MONGO_URL, warn=False)
+    except (ArgumentError, PyMongoError, ValueError):
         raise ValueError("configuracion_outbox_fuera_de_1f") from None
+    nodos = mongo["nodelist"]
+    opciones = mongo["options"]
     if (
-        pg.hostname not in {"127.0.0.1", "::1", "localhost"}
-        or not pg.path.startswith("/pokearena_alembic_")
+        pg.host not in {"127.0.0.1", "::1", "localhost"}
+        or pg.port in {None, 0, 5432}
+        or pg.query
+        or not (pg.database or "").startswith("pokearena_alembic_")
         or not pg.username
-        or mongo.scheme != "mongodb"
-        or mongo.hostname not in {"127.0.0.1", "::1", "localhost"}
-        or "," in mongo.netloc.rsplit("@", 1)[-1]
-        or not mongo.username
+        or len(nodos) != 1
+        or nodos[0][0] not in {"127.0.0.1", "::1", "localhost"}
+        or nodos[0][1] in {None, 0, 27017}
+        or not mongo["username"]
+        or "replicaSet" in opciones
+        or opciones.get("loadBalanced", False) is not False
+        or opciones.get("directConnection", True) is not True
         or ajustes.OUTBOX_LEASE_SECONDS <= ajustes.DB_CONNECT_TIMEOUT_SECONDS
     ):
         raise ValueError("configuracion_outbox_fuera_de_1f")
 
     if (
         ajustes.MONGO_DB == MONGO_F5_BASE
-        or mongo.path == f"/{MONGO_F5_BASE}"
-        or pg.path == f"/{_POSTGRES_F5[2]}"
+        or mongo["database"] == MONGO_F5_BASE
+        or pg.database == _POSTGRES_F5[2]
     ):
         try:
             _verificar_f5(ajustes)
@@ -78,7 +92,7 @@ async def run_outbox_worker(*, una_vez: bool = False) -> None:
     verificar_configuracion(ajustes)
     from src.database.postgresql.connection import engine
 
-    if ajustes.MONGO_DB == MONGO_F5_BASE and engine.url != make_url(ajustes.DATABASE_URL):
+    if engine.url != make_url(ajustes.DATABASE_URL):
         raise ValueError("configuracion_outbox_fuera_de_1f")
     engine.echo = False
 
@@ -88,6 +102,8 @@ async def run_outbox_worker(*, una_vez: bool = False) -> None:
     for senal in senales:
         loop.add_signal_handler(senal, detener.set)
     try:
+        if ajustes.ORIGINAL_RUNTIME == "outbox":
+            await verificar_mongo_original("outbox")
         procesador, almacen, error_temporal = componer_procesador_outbox()
         indices_verificados = False
         while not detener.is_set():

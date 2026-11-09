@@ -9,6 +9,7 @@ from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
 from src.database.mongodb.destinos_outbox import MONGO_F5_BASE, MONGO_F5_SERVIDOR, PREFIJOS_MONGO_1F
+from src.shared.destinos_originales import MONGO_ORIGINAL
 
 from ..domain.proyeccion_carta import EventoIncompatible, ProyeccionCarta, ProyeccionTemporal
 
@@ -17,19 +18,36 @@ def _entero(valor: object) -> TypeGuard[int]:
     return isinstance(valor, int) and not isinstance(valor, bool)
 
 
+async def verificar_indice_unico_codigo(coleccion: AsyncCollection[dict[str, Any]]) -> None:
+    """Comprueba el índice administrado del catálogo sin modificar la colección."""
+    indices = await coleccion.index_information()
+    if not any(
+        i["key"] == [("code", 1)]
+        and i.get("unique")
+        and not i.get("sparse")
+        and not i.get("partialFilterExpression")
+        for i in indices.values()
+    ):
+        raise ValueError("indice_unico_code_requerido")
+
+
 class MongoProyeccionCartas:
     """Verifica la colección existente y publica por ID estable con mayoría."""
 
     def __init__(self, coleccion: AsyncCollection[dict[str, Any]]) -> None:
         """Usa la colección inyectada con lecturas primarias y escrituras confirmadas."""
         db = coleccion.database
-        if db.name == MONGO_F5_BASE:
+        if db.name in (MONGO_F5_BASE, MONGO_ORIGINAL[2]):
+            from src.shared.config import get_settings
+
             cliente = db.client
             servidores = cliente.topology_description.server_descriptions()
+            servidor = MONGO_F5_SERVIDOR if db.name == MONGO_F5_BASE else MONGO_ORIGINAL[:2]
             valido = (
                 cliente.options.direct_connection is True
-                and cliente.get_default_database(default="_outbox_sin_base").name == MONGO_F5_BASE
-                and set(servidores) == {MONGO_F5_SERVIDOR}
+                and cliente.get_default_database(default="_outbox_sin_base").name == db.name
+                and set(servidores) == {servidor}
+                and (db.name == MONGO_F5_BASE or get_settings().ORIGINAL_RUNTIME == "outbox")
             )
         else:
             valido = db.name.startswith(PREFIJOS_MONGO_1F)
@@ -43,15 +61,7 @@ class MongoProyeccionCartas:
 
     async def verificar_indices(self) -> None:
         """Exige el índice único de código, administrado fuera del worker."""
-        indices = await self._coleccion.index_information()
-        if not any(
-            i["key"] == [("code", 1)]
-            and i.get("unique")
-            and not i.get("sparse")
-            and not i.get("partialFilterExpression")
-            for i in indices.values()
-        ):
-            raise ValueError("indice_unico_code_requerido")
+        await verificar_indice_unico_codigo(self._coleccion)
 
     async def guardar(self, carta: ProyeccionCarta) -> None:
         """Inserta o actualiza solo una versión inferior y verifica las colisiones."""

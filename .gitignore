@@ -103,3 +103,26 @@ DocsE/
 
 # La guía oficial de raíz forma parte del repositorio.
 !/AGENTS.md
+
+#Carpeta con imagen de prueba
+prueba/
+
+# Configuracion privada - nunca versionar
+.env
+.env.*
+
+# Pruebas locales
+/backend/tests/
+/frontend/tests/
+
+# Archivos de entorno (incluidos ejemplos)
+**/.env*
+
+# Credenciales y configuraciones privadas
+**/.env
+**/.env.*
+!**/.env.example
+
+# Pruebas locales
+/backend/tests/
+/frontend/tests/

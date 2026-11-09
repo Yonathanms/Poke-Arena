@@ -10,7 +10,7 @@ from sqlalchemy.orm import SessionTransactionOrigin
 
 from ..domain.carta_model import Carta, Habilidad
 from ..ports.cartas_ports import CartasRepositoryPort, ErrorPersistencia, TipoErrorPersistencia
-from .cartas_orm import CartaORM, ContadorCartaORM, HabilidadORM
+from .cartas_orm import CartaORM, ContadorCartaORM, HabilidadORM, ImagenCartaORM
 
 
 def _traducir_error(error: DBAPIError) -> ErrorPersistencia:
@@ -89,6 +89,23 @@ class SqlCartaRepository(CartasRepositoryPort):
         except DBAPIError as error:
             raise _traducir_error(error) from None
         return _a_carta(fila) if fila else None
+
+    async def buscar_referencia_miniatura(self, carta_id: str) -> str | None:
+        """Lee únicamente la referencia WebP lista de la carta solicitada."""
+        self._exigir_transaccion()
+        try:
+            return await self._session.scalar(
+                select(ImagenCartaORM.thumbnail_storage_key)
+                .join(CartaORM, CartaORM.image_id == ImagenCartaORM.id)
+                .where(
+                    CartaORM.id == carta_id,
+                    ImagenCartaORM.state == "READY",
+                    ImagenCartaORM.thumbnail_format == "WEBP",
+                    ImagenCartaORM.thumbnail_storage_key != ImagenCartaORM.original_storage_key,
+                )
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
 
     async def buscar_habilidad_por_codigo(self, codigo: str) -> Habilidad | None:
         """Lee habilidad y copia JSON para no filtrar estado mutable del ORM."""

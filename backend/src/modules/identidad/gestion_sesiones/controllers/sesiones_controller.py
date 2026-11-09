@@ -4,7 +4,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
 from starlette.requests import ClientDisconnect
 
@@ -18,6 +18,7 @@ from src.shared.http_module import (
 from src.shared.validacion.cuerpo import CuerpoExcesivo, flujo_acotado
 
 from ..domain.sesion_model import (
+    IdentidadEnConflicto,
     IdentidadInvalida,
     IdentidadLimitada,
     IdentidadNoDisponible,
@@ -28,6 +29,10 @@ from ..domain.sesion_model import (
 from ..services.sesiones_service import Sesiones
 
 logger = logging.getLogger(__name__)
+
+
+def _conflicto_identidad(status: Literal[403, 409]) -> HTTPException:
+    return problema(status, "identidad_tipo_en_conflicto", "Autorización de cuenta incompatible.")
 
 
 class CredencialGoogle(BaseModel):
@@ -82,12 +87,10 @@ class RespuestaPerfil(BaseModel):
     created_at: str | None = None
 
 
-def crear_router(
+def crear_dependencias(
     servicio: Callable[[], Sesiones],
-    verificar: Callable[[str, str | None], Awaitable[Any]],
-) -> tuple[APIRouter, Callable[..., Awaitable[str]], Callable[..., Awaitable[Principal]]]:
-    """Construye las rutas de sesión y los guards de autorización."""
-    router = APIRouter(prefix="/identity", tags=["Identity"])
+) -> tuple[Callable[..., Awaitable[str]], Callable[..., Awaitable[Principal]]]:
+    """Compone las dependencias públicas de autenticación de Identidad."""
 
     async def administrador(token: str = Depends(token_plataforma)) -> str:
         """Devuelve el ID SQL autorizado con una credencial opaca vigente."""
@@ -95,6 +98,8 @@ def crear_router(
             principal = await servicio().autenticar(token)
         except IdentidadInvalida:
             raise credencial_invalida() from None
+        except IdentidadEnConflicto:
+            raise _conflicto_identidad(403) from None
         except IdentidadNoDisponible:
             raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
         except Exception:
@@ -109,10 +114,24 @@ def crear_router(
             return await servicio().autenticar(token)
         except IdentidadInvalida:
             raise credencial_invalida() from None
+        except IdentidadEnConflicto:
+            raise _conflicto_identidad(403) from None
         except IdentidadNoDisponible:
             raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
         except Exception:
             raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
+
+    return administrador, jugador
+
+
+def crear_router(
+    servicio: Callable[[], Sesiones],
+    verificar: Callable[[str, str | None], Awaitable[Any]],
+    autenticar: Callable[..., Awaitable[Principal]],
+    provisionar: Callable[[str], Awaitable[None]],
+) -> APIRouter:
+    """Compone las rutas de sesión con el callback de provisión de la aplicación."""
+    router = APIRouter(prefix="/identity", tags=["Identity"])
 
     @router.post(
         "/local/session",
@@ -181,7 +200,14 @@ def crear_router(
                 credencial.token_value, get_settings().GOOGLE_OAUTH_CLIENT_ID
             )
             email = getattr(identidad, "email", None)
-            sesion = await servicio().emitir(str(identidad), email=email)
+            sesion = await servicio().emitir(
+                str(identidad),
+                email=email,
+                email_verified=getattr(identidad, "email_verified", False) is True,
+            )
+        except IdentidadEnConflicto:
+            logger.warning("Ingreso Google rechazado por conflicto de tipo de cuenta")
+            raise _conflicto_identidad(409) from None
         except IdentidadInvalida:
             logger.warning("Fallo al autenticar credencial Google: token inválido")
             raise problema(
@@ -192,9 +218,11 @@ def crear_router(
         except IdentidadNoDisponible:
             logger.error("Servicio de verificación de Google no disponible")
             raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
-        except Exception as exc:
-            logger.exception("Error interno al procesar inicio de sesión Google: %s", exc)
+        except Exception:
+            logger.error("oidc_google_error_interno")
             raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
+        if sesion.principal.rol == "PLAYER":
+            await provisionar(sesion.token)
         return _respuesta_sesion(sesion, response)
 
     @router.post(
@@ -205,10 +233,12 @@ def crear_router(
         responses=respuestas_documentadas(
             {
                 401: "ID token inválido",
+                403: "Jugador no elegible",
+                409: "Tipo de cuenta incompatible o estado de provisión inconsistente",
                 413: "Cuerpo demasiado grande",
                 415: "Se requiere application/json",
                 422: "Solicitud inválida",
-                503: "Identidad no disponible",
+                503: "Identidad o provisión no disponible",
                 500: "Error interno",
             }
         ),
@@ -225,10 +255,12 @@ def crear_router(
         responses=respuestas_documentadas(
             {
                 401: "ID token inválido",
+                403: "Jugador no elegible",
+                409: "Tipo de cuenta incompatible o estado de provisión inconsistente",
                 413: "Cuerpo demasiado grande",
                 415: "Se requiere application/json",
                 422: "Solicitud inválida",
-                503: "Identidad no disponible",
+                503: "Identidad o provisión no disponible",
                 500: "Error interno",
             }
         ),
@@ -243,11 +275,12 @@ def crear_router(
         operation_id="getAuthenticatedProfile",
         summary="Obtener perfil del usuario autenticado y estado de juego",
         responses=respuestas_documentadas(
-            {401: "Sesión requerida", 503: "Identidad no disponible"}
+            {401: "Sesión requerida", 403: "Tipo de cuenta incompatible",
+             503: "Identidad no disponible"},
         ),
     )
     async def obtener_mi_perfil(
-        principal: Principal = Depends(jugador),
+        principal: Principal = Depends(autenticar),
     ) -> RespuestaPerfil:
         """Devuelve los datos de la cuenta y el perfil de jugador desde PostgreSQL."""
         try:
@@ -255,7 +288,7 @@ def crear_router(
             return RespuestaPerfil(
                 user_id=perfil.user_id,
                 email=perfil.email,
-                role=perfil.role,
+                role=principal.rol,
                 elo=perfil.elo,
                 cubes=perfil.cubes,
                 has_received_initial_collection=perfil.has_received_initial_collection,
@@ -266,7 +299,7 @@ def crear_router(
         except Exception:
             raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
 
-    return router, administrador, jugador
+    return router
 
 
 def _respuesta_sesion(sesion: SesionEmitida, response: Response) -> RespuestaSesion:

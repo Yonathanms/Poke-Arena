@@ -10,7 +10,9 @@ from sqlalchemy import ColumnElement, or_, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
-from src.database.postgresql.revisiones import REVISIONES_CARTAS
+from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_original_activo
+from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA, REVISIONES_CARTAS
+from src.shared.destinos_originales import PG_ORIGINAL
 from src.shared.idempotencia.models import IdempotencyRecordORM
 from src.shared.outbox import OutboxEventORM
 
@@ -332,12 +334,19 @@ class SqlCoordinacionCreacion:
                 adquirido: bool | None = False
                 try:
                     async with conn.begin():
-                        base = await conn.scalar(text("SELECT current_database()"))
-                        if not isinstance(base, str) or not base.startswith("pokearena_alembic_"):
+                        identidad = tuple((await conn.execute(IDENTIDAD_SQL)).one())
+                        base = identidad[0]
+                        original = base == PG_ORIGINAL[2]
+                        permitido = (
+                            destino_original_activo(identidad, "api") if original
+                            else base.startswith("pokearena_alembic_")
+                        )
+                        if not permitido:
                             raise _fallo_sql()
+                        revisiones = {REVISION_TIPO_CUENTA} if original else REVISIONES_CARTAS
                         if (
                             await conn.scalar(text("SELECT version_num FROM alembic_version"))
-                            not in REVISIONES_CARTAS
+                            not in revisiones
                         ):
                             raise _fallo_sql()
                         pid = await conn.scalar(text("SELECT pg_backend_pid()"))

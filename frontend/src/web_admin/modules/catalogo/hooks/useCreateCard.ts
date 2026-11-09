@@ -325,17 +325,78 @@ export function mapCreateCardError(error: unknown): CreateCardErrorInfo {
       });
     }
 
-    if (error.status === 500 || error.status === 503) {
-      const isCommitUncertain = error.code === "commit_incierto";
+    if (error.status === 503) {
+      if (error.code === "almacenamiento") {
+        return Object.freeze({
+          status: 503,
+          code: "almacenamiento",
+          title: "Almacenamiento no disponible (503)",
+          detail: error.detail || "El almacenamiento no está disponible.",
+          userGuidance:
+            "El servicio de almacenamiento de imágenes no está disponible. Tu borrador y la clave de idempotencia se conservan intactos; pulsa 'Reintentar operación pendiente' cuando el servicio se restablezca.",
+          correlationId: error.correlationId,
+          retryAfterSeconds: error.retryAfterSeconds,
+          isNetworkError: false,
+          isUncertainOutcome: true,
+          isSessionExpired: false,
+        });
+      }
+
+      if (error.code === "commit_incierto") {
+        return Object.freeze({
+          status: 503,
+          code: "commit_incierto",
+          title: "Confirmación incierta en el servidor (503)",
+          detail: error.detail || "Resultado incierto. Repite con la misma clave.",
+          userGuidance:
+            "El servidor no pudo confirmar si la transacción finalizó. Usa 'Reintentar operación pendiente' para repetir la solicitud con la misma Idempotency-Key y recuperar la carta sin duplicarla.",
+          correlationId: error.correlationId,
+          retryAfterSeconds: error.retryAfterSeconds,
+          isNetworkError: false,
+          isUncertainOutcome: true,
+          isSessionExpired: false,
+        });
+      }
+
+      if (error.code === "transaccion") {
+        return Object.freeze({
+          status: 503,
+          code: "transaccion",
+          title: "Fallo de confirmación de transacción (503)",
+          detail: error.detail || "No se pudo confirmar la operación.",
+          userGuidance:
+            "No se pudo confirmar la transacción en la base de datos. Tu borrador y la clave de idempotencia se conservan intactos; pulsa 'Reintentar operación pendiente' para repetir la solicitud.",
+          correlationId: error.correlationId,
+          retryAfterSeconds: error.retryAfterSeconds,
+          isNetworkError: false,
+          isUncertainOutcome: true,
+          isSessionExpired: false,
+        });
+      }
+
       return Object.freeze({
-        status: error.status,
+        status: 503,
         code: error.code,
-        title: isCommitUncertain
-          ? "Confirmación incierta en el servidor (503)"
-          : `Resultado incierto del servidor (${error.status})`,
+        title: "Servicio no disponible (503)",
+        detail: error.detail || "El servicio no está disponible temporalmente.",
+        userGuidance:
+          "El servidor no está disponible temporalmente. Tu borrador y la clave de idempotencia se conservan intactos; pulsa 'Reintentar operación pendiente' para intentar nuevamente.",
+        correlationId: error.correlationId,
+        retryAfterSeconds: error.retryAfterSeconds,
+        isNetworkError: false,
+        isUncertainOutcome: true,
+        isSessionExpired: false,
+      });
+    }
+
+    if (error.status === 500) {
+      return Object.freeze({
+        status: 500,
+        code: error.code,
+        title: "Error interno del servidor (500)",
         detail: error.detail,
         userGuidance:
-          "El servidor no pudo confirmar si la transacción finalizó. Usa 'Reintentar operación pendiente' para repetir la solicitud con la misma Idempotency-Key y recuperar la carta sin duplicarla.",
+          "El servidor experimentó un error interno. Conservamos los datos y la clave de idempotencia para que puedas reintentar sin duplicar la carta.",
         correlationId: error.correlationId,
         retryAfterSeconds: error.retryAfterSeconds,
         isNetworkError: false,
