@@ -8,12 +8,12 @@ Uso:
 import argparse
 import io
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 # Asegurar codificación UTF-8 en terminales Windows
 if sys.platform == "win32":
@@ -183,16 +183,32 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pokearena_alembic_fro
     }
     run_cmd([str(py), "-m", "alembic", "-c", "alembic.ini", "upgrade", "heads"], cwd=BACKEND_DIR, env=migration_env)
 
-    # 5. Otorgar permisos a orm_media_test
-    print("\n[4/5] Otorgando permisos de tablas al usuario de aplicación 'orm_media_test'...")
+    # 5. Otorgar permisos a orm_media_test y poke_api_user
+    print("\n[4/5] Otorgando permisos de tablas a los usuarios de aplicación...")
     sql_grants = """
 GRANT USAGE ON SCHEMA public TO orm_media_test;
 GRANT SELECT ON alembic_version, catalog_abilities TO orm_media_test;
 GRANT SELECT, UPDATE ON catalog_card_code_counters TO orm_media_test;
-GRANT SELECT, INSERT, UPDATE ON
+GRANT SELECT, INSERT, UPDATE, DELETE ON
   catalog_cards, catalog_card_images, shared_idempotency_records,
-  shared_outbox, identity_users, identity_sessions
+  shared_outbox, identity_users, identity_sessions,
+  locations, outbox_events, idempotency_records,
+  player_profiles, cube_transactions, player_cards
 TO orm_media_test;
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+    GRANT USAGE ON SCHEMA public TO poke_api_user;
+    GRANT SELECT ON alembic_version, catalog_abilities TO poke_api_user;
+    GRANT SELECT, UPDATE ON catalog_card_code_counters TO poke_api_user;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON
+      catalog_cards, catalog_card_images, shared_idempotency_records,
+      shared_outbox, identity_users, identity_sessions,
+      locations, outbox_events, idempotency_records,
+      player_profiles, cube_transactions, player_cards
+    TO poke_api_user;
+  END IF;
+END $$;
 """
     run_quiet(["docker", "exec", "-i", "pokearena-postgres", "psql", "-U", "postgres", "-d", "pokearena_alembic_frontend_dev"], input_data=sql_grants)
 
@@ -210,7 +226,7 @@ db.getSiblingDB('pokearena_catalog').cards_projection.createIndex({ code: 1 }, {
 
     # 7. Aprovisionar administrador local
     password = getattr(args, "admin_password", None) or "PokeArenaMaster2026!"
-    print(f"\n[Auth] Aprovisionando administrador local ('maestro-local')...")
+    print("\n[Auth] Aprovisionando administrador local ('maestro-local')...")
     provision_code = f"""
 import asyncio
 from src.modules.identidad.identidad_module import provisionar_administrador
@@ -234,6 +250,49 @@ print('ID de usuario asignado:', uid)
     print("    Terminal 1 (Backend) : cd backend && .venv\\Scripts\\activate && uvicorn src.main:app --reload")
     print("    Terminal 2 (Frontend): cd frontend && npm run dev")
     print("=" * 60)
+
+
+def cmd_migrate(_args: argparse.Namespace) -> None:
+    """Aplica las migraciones pendientes con Alembic y actualiza permisos en PostgreSQL."""
+    print("=" * 60)
+    print("  APLICANDO MIGRACIONES DE ESQUEMA CON ALEMBIC")
+    print("=" * 60)
+    ensure_docker_prerequisites()
+    py = get_backend_python()
+    migration_env = {
+        "MIGRATION_DATABASE_URL": "postgresql+asyncpg://pokearena_migrator:migrator_pass_2026@127.0.0.1:5432/pokearena_alembic_frontend_dev"
+    }
+    print("\n[Alembic] Ejecutando 'alembic upgrade heads'...")
+    run_cmd([str(py), "-m", "alembic", "-c", "alembic.ini", "upgrade", "heads"], cwd=BACKEND_DIR, env=migration_env)
+
+    print("\n[PostgreSQL] Actualizando permisos de tablas para usuarios de aplicación...")
+    sql_grants = """
+GRANT USAGE ON SCHEMA public TO orm_media_test;
+GRANT SELECT ON alembic_version, catalog_abilities TO orm_media_test;
+GRANT SELECT, UPDATE ON catalog_card_code_counters TO orm_media_test;
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  catalog_cards, catalog_card_images, shared_idempotency_records,
+  shared_outbox, identity_users, identity_sessions,
+  locations, outbox_events, idempotency_records,
+  player_profiles, cube_transactions, player_cards
+TO orm_media_test;
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+    GRANT USAGE ON SCHEMA public TO poke_api_user;
+    GRANT SELECT ON alembic_version, catalog_abilities TO poke_api_user;
+    GRANT SELECT, UPDATE ON catalog_card_code_counters TO poke_api_user;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON
+      catalog_cards, catalog_card_images, shared_idempotency_records,
+      shared_outbox, identity_users, identity_sessions,
+      locations, outbox_events, idempotency_records,
+      player_profiles, cube_transactions, player_cards
+    TO poke_api_user;
+  END IF;
+END $$;
+"""
+    run_quiet(["docker", "exec", "-i", "pokearena-postgres", "psql", "-U", "postgres", "-d", "pokearena_alembic_frontend_dev"], input_data=sql_grants)
+    print("\n[OK] Migraciones aplicadas y permisos actualizados exitosamente.")
 
 
 def cmd_stop(_args: argparse.Namespace) -> None:
@@ -304,6 +363,7 @@ def main() -> None:
 Comandos habituales:
   python manage.py install       # Configura .env e instala dependencias (Python + Node.js)
   python manage.py setup-dev     # Inicia Docker, corre Alembic, configura usuarios e indexa Mongo
+  python manage.py migrate       # Aplica migraciones pendientes con Alembic y actualiza permisos
   python manage.py dbs           # Inicia Postgres y MongoDB en Docker
   python manage.py dev-backend   # Corre la API FastAPI en local (:8000)
   python manage.py dev-frontend  # Corre React / Vite en local (:5173)
@@ -322,6 +382,8 @@ Comandos habituales:
     sub_setup = sub.add_parser("setup-dev", aliases=["init-db", "provision"], help="Aprovisiona PostgreSQL, Alembic, MongoDB y admin local")
     sub_setup.add_argument("--password", dest="admin_password", default="PokeArenaMaster2026!", help="Contraseña para el usuario maestro-local")
     sub_setup.set_defaults(func=cmd_setup_dev)
+
+    sub.add_parser("migrate", aliases=["alembic", "db-upgrade"], help="Aplica migraciones pendientes con Alembic").set_defaults(func=cmd_migrate)
 
     sub.add_parser("stop", aliases=["down"], help="Detiene bases de datos").set_defaults(func=cmd_stop)
     sub.add_parser("clean", aliases=["stop-clean"], help="Detiene y borra bases de datos").set_defaults(func=cmd_clean)

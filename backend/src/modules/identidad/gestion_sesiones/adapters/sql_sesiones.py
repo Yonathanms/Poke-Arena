@@ -9,9 +9,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.database.postgresql.revisiones import REVISION_IDENTIDAD_LOCAL
+from src.database.postgresql.revisiones import REVISIONES_IDENTIDAD_LOCAL
 
-from ..domain.sesion_model import IdentidadLimitada, IdentidadNoDisponible, Rol
+from ..domain.sesion_model import (
+    IdentidadLimitada,
+    IdentidadNoDisponible,
+    PerfilUsuario,
+    Rol,
+)
 from .password_local import crear_hash, verificar_hash
 
 
@@ -24,8 +29,8 @@ async def _destino(sesion: AsyncSession, *, local: bool = False) -> None:
     ).one()
     if not base.startswith("pokearena_alembic_") or superusuario:
         raise IdentidadNoDisponible()
-    if local and await sesion.scalar(text("SELECT version_num FROM alembic_version")) != (
-        REVISION_IDENTIDAD_LOCAL
+    if local and await sesion.scalar(text("SELECT version_num FROM alembic_version")) not in (
+        REVISIONES_IDENTIDAD_LOCAL
     ):
         raise IdentidadNoDisponible()
 
@@ -60,24 +65,56 @@ class SqlSesiones:
         """Recibe la fábrica compartida y el opt-in de identidad local."""
         self._factory, self._local = factory, local
 
-    async def crear(self, subject: str, rol: Rol, huella: str, expira: datetime) -> str:
+    async def crear(
+        self,
+        subject: str,
+        rol: Rol,
+        huella: str,
+        expira: datetime,
+        email: str | None = None,
+    ) -> tuple[str, bool]:
         """Reutiliza una identidad Google por proveedor y subject."""
         try:
             async with self._factory() as sesion, sesion.begin():
                 await _destino(sesion)
+                existente = (
+                    await sesion.execute(
+                        text("""
+                            SELECT id FROM identity_users
+                            WHERE provider = 'GOOGLE' AND provider_subject = :subject
+                        """),
+                        {"subject": subject},
+                    )
+                ).scalar_one_or_none()
+                es_nuevo = existente is None
+
                 usuario = await sesion.execute(
                     text("""
-                        INSERT INTO identity_users (id, provider, provider_subject, role)
-                        VALUES (:id, 'GOOGLE', :subject, :rol)
+                        INSERT INTO identity_users (id, provider, provider_subject, email, role)
+                        VALUES (:id, 'GOOGLE', :subject, :email, :rol)
                         ON CONFLICT (provider, provider_subject)
-                        DO UPDATE SET role = EXCLUDED.role, updated_at = now()
+                        DO UPDATE SET
+                            role = EXCLUDED.role,
+                            email = COALESCE(EXCLUDED.email, identity_users.email),
+                            updated_at = now()
                         RETURNING id
                     """),
-                    {"id": str(uuid4()), "subject": subject, "rol": rol},
+                    {"id": str(uuid4()), "subject": subject, "email": email, "rol": rol},
                 )
                 id_usuario = str(usuario.scalar_one())
+
+                await sesion.execute(
+                    text("""
+                        INSERT INTO player_profiles
+                            (user_id, elo, cubes, has_received_initial_collection)
+                        VALUES (:user_id, 0, 0, false)
+                        ON CONFLICT (user_id) DO NOTHING
+                    """),
+                    {"user_id": id_usuario},
+                )
+
                 await _insertar_sesion(sesion, id_usuario, huella, expira)
-            return id_usuario
+            return id_usuario, es_nuevo
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None
 
@@ -160,14 +197,14 @@ class SqlSesiones:
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None
 
-    async def activa(self, huella: str) -> tuple[str, str, str, str] | None:
+    async def activa(self, huella: str) -> tuple[str, str, str, str, str | None] | None:
         """Lee el rol vigente de una sesión permitida, no expirada ni revocada."""
         try:
             async with self._factory() as sesion:
                 fila = (
                     await sesion.execute(
                         text("""
-                    SELECT u.id, u.provider_subject, u.role, u.provider
+                    SELECT u.id, u.provider_subject, u.role, u.provider, u.email
                     FROM identity_sessions s JOIN identity_users u ON u.id = s.user_id
                     WHERE s.token_hash = :huella
                       AND (u.provider = 'GOOGLE' OR (
@@ -180,7 +217,15 @@ class SqlSesiones:
                     )
                 ).one_or_none()
             return (
-                None if fila is None else (str(fila[0]), str(fila[1]), str(fila[2]), str(fila[3]))
+                None
+                if fila is None
+                else (
+                    str(fila[0]),
+                    str(fila[1]),
+                    str(fila[2]),
+                    str(fila[3]),
+                    fila[4] if fila[4] is None else str(fila[4]),
+                )
             )
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None
@@ -196,6 +241,39 @@ class SqlSesiones:
                     WHERE token_hash=:huella AND revoked_at IS NULL
                 """),
                     {"huella": huella},
+                )
+        except SQLAlchemyError:
+            raise IdentidadNoDisponible() from None
+
+    async def obtener_perfil(self, id_usuario: str) -> PerfilUsuario | None:
+        """Consulta identity_users y player_profiles para verificar la conexión a SQL."""
+        try:
+            async with self._factory() as sesion:
+                fila = (
+                    await sesion.execute(
+                        text("""
+                            SELECT u.id, u.email, u.role,
+                                   COALESCE(p.elo, 0) AS elo,
+                                   COALESCE(p.cubes, 0) AS cubes,
+                                   COALESCE(p.has_received_initial_collection, false) AS has_col,
+                                   u.created_at::text AS created_at
+                            FROM identity_users u
+                            LEFT JOIN player_profiles p ON p.user_id = u.id
+                            WHERE u.id = :id
+                        """),
+                        {"id": id_usuario},
+                    )
+                ).one_or_none()
+                if fila is None:
+                    return None
+                return PerfilUsuario(
+                    user_id=str(fila[0]),
+                    email=fila[1] if fila[1] is None else str(fila[1]),
+                    role="PLATFORM_ADMIN" if str(fila[2]) == "PLATFORM_ADMIN" else "PLAYER",
+                    elo=int(fila[3]),
+                    cubes=int(fila[4]),
+                    has_received_initial_collection=bool(fila[5]),
+                    created_at=str(fila[6]) if fila[6] is not None else None,
                 )
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None

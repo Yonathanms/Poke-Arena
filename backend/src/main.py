@@ -47,9 +47,16 @@ def crear_app() -> FastAPI:
     registrar_errores(app)
     app.include_router(identidad_module.router, prefix=settings.API_V1_PREFIX)
     app.include_router(
-        router_cartas(identidad_module.requerir_administrador), prefix=settings.API_V1_PREFIX
+        router_cartas(
+            identidad_module.requerir_administrador,
+            identidad_module.requerir_jugador,
+        ),
+        prefix=settings.API_V1_PREFIX,
     )
-    app.include_router(router_ubicaciones(), prefix=settings.API_V1_PREFIX)
+    app.include_router(
+        router_ubicaciones(identidad_module.requerir_administrador),
+        prefix=settings.API_V1_PREFIX,
+    )
     app.add_api_route(
         f"{settings.API_V1_PREFIX}/health",
         health_check,

@@ -62,6 +62,7 @@ class Settings(EnvironmentSettings):
     IDENTITY_LOCAL_ENABLED: bool = False
     GOOGLE_OAUTH_CLIENT_ID: str | None = None
     PLATFORM_ADMIN_GOOGLE_SUBJECTS: str = ""
+    PLATFORM_ADMIN_EMAILS: str = ""
     IDENTITY_ACCESS_TOKEN_TTL_SECONDS: int = Field(default=900, ge=60, le=86_400)
 
     # CORS
@@ -133,6 +134,20 @@ class Settings(EnvironmentSettings):
     def cors_origins(self) -> list[str]:
         """Devuelve orígenes CORS normalizados sin entradas vacías."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def admin_google_subjects(self) -> frozenset[str]:
+        """Devuelve subjects de Google con permisos de administrador."""
+        return frozenset(
+            s.strip() for s in self.PLATFORM_ADMIN_GOOGLE_SUBJECTS.split(",") if s.strip()
+        )
+
+    @property
+    def admin_emails(self) -> frozenset[str]:
+        """Devuelve correos normalizados con permisos de administrador."""
+        return frozenset(
+            e.strip().lower() for e in self.PLATFORM_ADMIN_EMAILS.split(",") if e.strip()
+        )
 
 
 class MigrationSettings(EnvironmentSettings):

@@ -12,6 +12,7 @@ class Principal:
 
     id: str
     rol: Rol
+    email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +22,30 @@ class SesionEmitida:
     principal: Principal
     token: str = field(repr=False)
     expira_en: int
+    is_new_user: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DatosIdentidadGoogle:
+    """Identidad y metadatos verificados devueltos por el proveedor Google OIDC."""
+
+    subject: str
+    email: str | None = None
+    name: str | None = None
+    picture: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PerfilUsuario:
+    """Datos de la cuenta y perfil de jugador persistidos en PostgreSQL."""
+
+    user_id: str
+    email: str | None
+    role: Rol
+    elo: int
+    cubes: int
+    has_received_initial_collection: bool
+    created_at: str | None = None
 
 
 class IdentidadNoDisponible(Exception):
