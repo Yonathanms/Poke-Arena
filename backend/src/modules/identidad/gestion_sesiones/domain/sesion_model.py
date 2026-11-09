@@ -12,6 +12,7 @@ class Principal:
 
     id: str
     rol: Rol
+    email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +22,17 @@ class SesionEmitida:
     principal: Principal
     token: str = field(repr=False)
     expira_en: int
+    is_new_user: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DatosIdentidadGoogle:
+    """Identidad y metadatos verificados devueltos por el proveedor Google OIDC."""
+
+    subject: str
+    email: str | None = None
+    name: str | None = None
+    picture: str | None = None
 
 
 class IdentidadNoDisponible(Exception):

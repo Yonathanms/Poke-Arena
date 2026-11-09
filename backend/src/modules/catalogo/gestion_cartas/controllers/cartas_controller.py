@@ -1,7 +1,7 @@
 """Adaptador HTTP de Crear y Buscar Cartas."""
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
@@ -142,9 +142,11 @@ def crear_router(
     administrador: Callable[..., Awaitable[str]],
     servicio: Callable[[], CrearCarta],
     habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
+    jugador: Callable[..., Awaitable[Any]] | None = None,
 ) -> APIRouter:
-    """Registra la creación con autorización obligatoria y búsqueda pública de cartas."""
+    """Registra la creación y consulta de cartas con autorización de plataforma."""
     router = APIRouter(prefix="/content", tags=["Content Cards"])
+    auth_jugador = jugador if jugador is not None else administrador
 
     @router.get(
         "/abilities",
@@ -215,14 +217,16 @@ def crear_router(
         response_model=CartaSearchResponseDTO,
         status_code=status.HTTP_200_OK,
         summary="Buscar y filtrar cartas del catálogo",
-        description="Endpoint optimizado con MongoDB para búsquedas rápidas por texto, tipo, rareza y paginado.",
+        description="Búsquedas rápidas optimizadas con MongoDB por texto, tipo y rareza.",
+        responses=respuestas_documentadas({401: "Sesión requerida"}),
     )
     async def buscar_cartas(
         q: Annotated[str | None, Query(description="Nombre, código o texto descriptivo")] = None,
-        tipo: Annotated[str | None, Query(description="Tipo elemental (ej. FUE, AGU, PLA)")] = None,
-        rareza: Annotated[str | None, Query(description="Rareza (COMUN, INFRECUENTE, RARA, EPICA, LEGENDARIA)")] = None,
-        limite: Annotated[int, Query(ge=1, le=100, description="Cartas por página (defecto 15)")] = 15,
+        tipo: Annotated[str | None, Query(description="Tipo elemental (ej. FUE, AGU)")] = None,
+        rareza: Annotated[str | None, Query(description="Rareza (COMUN, RARA, etc.)")] = None,
+        limite: Annotated[int, Query(ge=1, le=100, description="Cartas por página")] = 15,
         pagina: Annotated[int, Query(ge=1, description="Número de página")] = 1,
+        _actor: Any = Depends(auth_jugador),
     ) -> CartaSearchResponseDTO:
         repo = MongoCartaRepository()
         srv = CartasService(repository=repo)
@@ -240,13 +244,19 @@ def crear_router(
         response_model=CartaResponseDTO,
         status_code=status.HTTP_200_OK,
         summary="Obtener detalle de carta por ID o Código",
+        responses=respuestas_documentadas({401: "Sesión requerida", 404: "Carta no encontrada"}),
     )
-    async def obtener_detalle_carta(identificador: str) -> CartaResponseDTO:
+    async def obtener_detalle_carta(
+        identificador: str,
+        _actor: Any = Depends(auth_jugador),
+    ) -> CartaResponseDTO:
         repo = MongoCartaRepository()
         srv = CartasService(repository=repo)
         carta = await srv.obtener_detalle_carta(identificador)
         if not carta:
-            raise problema(404, "carta_no_encontrada", f"No se encontró carta con identificador '{identificador}'.")
+            raise problema(
+                404, "carta_no_encontrada", f"No se encontró carta '{identificador}'."
+            )
         return carta
 
     return router

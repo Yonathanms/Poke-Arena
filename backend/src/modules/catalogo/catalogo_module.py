@@ -74,15 +74,19 @@ def crear_servicio_crear_carta() -> Any:
     )
 
 
-def router_cartas(administrador: Any) -> Any:
+def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
-    return modulo.crear_router(administrador, crear_servicio_crear_carta, listar_habilidades)
+    return modulo.crear_router(
+        administrador, crear_servicio_crear_carta, listar_habilidades, jugador=jugador
+    )
 
 
-def router_ubicaciones() -> Any:
-    """Compone el router de ubicaciones."""
-    from .gestion_ubicaciones.controllers.ubicaciones_controller import router
+def router_ubicaciones(administrador: Any | None = None) -> Any:
+    """Compone el router de ubicaciones con autorización."""
+    from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router, router
+    if administrador is not None:
+        return crear_router(administrador)
     return router
 
 

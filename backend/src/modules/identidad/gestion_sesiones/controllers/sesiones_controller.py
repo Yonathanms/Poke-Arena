@@ -1,10 +1,10 @@
 """Intercambio OIDC y dependencias de autenticación de plataforma."""
 
 from collections.abc import Awaitable, Callable
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
 from starlette.requests import ClientDisconnect
 
 from src.shared.config import get_settings
@@ -20,6 +20,7 @@ from ..domain.sesion_model import (
     IdentidadInvalida,
     IdentidadLimitada,
     IdentidadNoDisponible,
+    Principal,
     Rol,
     SesionEmitida,
 )
@@ -30,7 +31,20 @@ class CredencialGoogle(BaseModel):
     """ID token para el client ID registrado, excluido de la representación en claro."""
 
     model_config = ConfigDict(extra="forbid")
-    google_id_token: SecretStr = Field(min_length=1, max_length=8192)
+    google_id_token: SecretStr | None = Field(default=None, min_length=1, max_length=8192)
+    id_token: SecretStr | None = Field(default=None, min_length=1, max_length=8192)
+
+    @model_validator(mode="after")
+    def validar_token_presente(self) -> "CredencialGoogle":
+        if not self.google_id_token and not self.id_token:
+            raise ValueError("Se requiere 'id_token' o 'google_id_token'")
+        return self
+
+    @property
+    def token_value(self) -> str:
+        token = self.id_token or self.google_id_token
+        assert token is not None
+        return token.get_secret_value()
 
 
 class CredencialLocal(BaseModel):
@@ -42,20 +56,22 @@ class CredencialLocal(BaseModel):
 
 
 class RespuestaSesion(BaseModel):
-    """Token opaco y metadatos de sesión del contrato histórico."""
+    """Token de sesión y metadatos del usuario autenticado."""
 
     access_token: str = Field(repr=False)
     token_type: Literal["Bearer"] = "Bearer"
     expires_in: int
     user_id: str
     role: Rol
+    email: str | None = None
+    is_new_user: bool = False
 
 
 def crear_router(
     servicio: Callable[[], Sesiones],
-    verificar: Callable[[str, str | None], Awaitable[str]],
-) -> tuple[APIRouter, Callable[..., Awaitable[str]]]:
-    """Construye la ruta de intercambio y la dependencia pública de administrador."""
+    verificar: Callable[[str, str | None], Awaitable[Any]],
+) -> tuple[APIRouter, Callable[..., Awaitable[str]], Callable[..., Awaitable[Principal]]]:
+    """Construye las rutas de sesión y los guards de autorización."""
     router = APIRouter(prefix="/identity", tags=["Identity"])
 
     async def administrador(token: str = Depends(token_plataforma)) -> str:
@@ -71,6 +87,17 @@ def crear_router(
         if principal.rol != "PLATFORM_ADMIN":
             raise problema(403, "permiso_denegado", "Se requiere el rol PLATFORM_ADMIN.")
         return principal.id
+
+    async def jugador(token: str = Depends(token_plataforma)) -> Principal:
+        """Valida que la sesión esté activa y pertenezca a un jugador o administrador."""
+        try:
+            return await servicio().autenticar(token)
+        except IdentidadInvalida:
+            raise credencial_invalida() from None
+        except IdentidadNoDisponible:
+            raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
+        except Exception:
+            raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
 
     @router.post(
         "/local/session",
@@ -132,6 +159,26 @@ def crear_router(
             raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
         return Response(status_code=204)
 
+    async def _intercambiar_google(request: Request, response: Response) -> RespuestaSesion:
+        credencial = await _leer_credencial(request, CredencialGoogle)
+        try:
+            identidad = await verificar(
+                credencial.token_value, get_settings().GOOGLE_OAUTH_CLIENT_ID
+            )
+            email = getattr(identidad, "email", None)
+            sesion = await servicio().emitir(str(identidad), email=email)
+        except IdentidadInvalida:
+            raise problema(
+                401,
+                "google_credencial_invalida",
+                "El ID token de Google no es válido.",
+            ) from None
+        except IdentidadNoDisponible:
+            raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
+        except Exception:
+            raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
+        return _respuesta_sesion(sesion, response)
+
     @router.post(
         "/google/session",
         status_code=201,
@@ -149,26 +196,30 @@ def crear_router(
         ),
     )
     async def crear_sesion(request: Request, response: Response) -> RespuestaSesion:
-        """Intercambia un ID token verificado por una sesión opaca de Poké-Arena."""
-        credencial = await _leer_credencial(request, CredencialGoogle)
-        try:
-            subject = await verificar(
-                credencial.google_id_token.get_secret_value(), get_settings().GOOGLE_OAUTH_CLIENT_ID
-            )
-            sesion = await servicio().emitir(subject)
-        except IdentidadInvalida:
-            raise problema(
-                401,
-                "google_credencial_invalida",
-                "El ID token de Google no es válido.",
-            ) from None
-        except IdentidadNoDisponible:
-            raise problema(503, "identidad_no_disponible", "Identidad no disponible.") from None
-        except Exception:
-            raise problema(500, "error_interno", "La solicitud no se pudo completar.") from None
-        return _respuesta_sesion(sesion, response)
+        """Intercambia un ID token verificado por una sesión opaca de Poké-Arena (201 Created)."""
+        return await _intercambiar_google(request, response)
 
-    return router, administrador
+    @router.post(
+        "/login/google",
+        status_code=200,
+        operation_id="loginGoogle",
+        openapi_extra=_esquema_json(CredencialGoogle),
+        responses=respuestas_documentadas(
+            {
+                401: "ID token inválido",
+                413: "Cuerpo demasiado grande",
+                415: "Se requiere application/json",
+                422: "Solicitud inválida",
+                503: "Identidad no disponible",
+                500: "Error interno",
+            }
+        ),
+    )
+    async def login_google(request: Request, response: Response) -> RespuestaSesion:
+        """Endpoint estándar de login Google para clientes web y móviles (200 OK)."""
+        return await _intercambiar_google(request, response)
+
+    return router, administrador, jugador
 
 
 def _respuesta_sesion(sesion: SesionEmitida, response: Response) -> RespuestaSesion:
@@ -178,6 +229,8 @@ def _respuesta_sesion(sesion: SesionEmitida, response: Response) -> RespuestaSes
         expires_in=sesion.expira_en,
         user_id=sesion.principal.id,
         role=sesion.principal.rol,
+        email=sesion.principal.email,
+        is_new_user=sesion.is_new_user,
     )
 
 

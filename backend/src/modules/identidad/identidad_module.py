@@ -22,19 +22,21 @@ def crear_servicio_sesiones() -> Any:
     from src.database.postgresql.connection import AsyncSessionLocal
 
     ajustes = get_settings()
-    admins = frozenset(
-        s.strip() for s in ajustes.PLATFORM_ADMIN_GOOGLE_SUBJECTS.split(",") if s.strip()
-    )
+    admins = ajustes.admin_google_subjects
+    admin_emails = ajustes.admin_emails
     return _servicio.Sesiones(
         _sql.SqlSesiones(AsyncSessionLocal, ajustes.IDENTITY_LOCAL_ENABLED),
         admins,
         ajustes.IDENTITY_ACCESS_TOKEN_TTL_SECONDS,
+        admin_emails=admin_emails,
     )
 
 
-router, requerir_administrador = _http.crear_router(
+router, requerir_administrador, requerir_jugador = _http.crear_router(
     crear_servicio_sesiones, _google.verificar_google
 )
+Principal = _servicio.Principal
+Rol = _servicio.Rol
 
 
 async def provisionar_administrador(usuario: str, password: str) -> str:
