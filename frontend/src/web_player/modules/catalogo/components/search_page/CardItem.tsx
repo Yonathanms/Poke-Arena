@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Zap, Sparkles, ShoppingBag } from 'lucide-react';
 import { PokemonCard, CardType, CardRarity } from '../../types/card.types';
+import { useCardThumbnail } from '../../hooks/useCardThumbnail';
 
 interface CardItemProps {
   card: PokemonCard;
@@ -41,24 +42,25 @@ const TYPE_CONFIG: Record<
     badgeClass: 'bg-orange-500/20 text-orange-400 border-orange-500/40',
     glowClass: 'group-hover:shadow-orange-500/20',
   },
-  INC: {
-    label: 'Incoloro',
-    badgeClass: 'bg-slate-500/20 text-slate-300 border-slate-500/40',
-    glowClass: 'group-hover:shadow-slate-500/20',
-  },
+};
+
+const DEFAULT_TYPE_CONFIG = {
+  label: 'Normal',
+  badgeClass: 'bg-slate-500/20 text-slate-300 border-slate-500/40',
+  glowClass: 'group-hover:shadow-slate-500/20',
 };
 
 const RARITY_BADGE: Record<CardRarity, { label: string; class: string }> = {
   COMUN: { label: 'Común', class: 'text-slate-400 border-slate-700 bg-slate-800/40' },
-  INFRECUENTE: { label: 'Infrecuente', class: 'text-emerald-400 border-emerald-800/40 bg-emerald-950/30' },
+  POCO_COMUN: { label: 'Poco Común', class: 'text-emerald-400 border-emerald-800/40 bg-emerald-950/30' },
   RARA: { label: 'Rara', class: 'text-blue-400 border-blue-800/40 bg-blue-950/30' },
-  EPICA: { label: 'Épica', class: 'text-purple-400 border-purple-800/40 bg-purple-950/30' },
   LEGENDARIA: { label: 'Legendaria', class: 'text-amber-400 border-amber-500/50 bg-amber-950/40 font-bold' },
 };
 
 export const CardItem: React.FC<CardItemProps> = ({ card, onSelect }) => {
-  const [imageError, setImageError] = useState(false);
-  const typeConfig = TYPE_CONFIG[card.type] || TYPE_CONFIG.INC;
+  const thumbnail = useCardThumbnail(card.id);
+  const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
+  const typeConfig = TYPE_CONFIG[card.type] || DEFAULT_TYPE_CONFIG;
   const rarityConfig = RARITY_BADGE[card.rarity] || RARITY_BADGE.COMUN;
 
   return (
@@ -68,11 +70,11 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onSelect }) => {
     >
       {/* Relación de aspecto 5:7 para la imagen oficial */}
       <div className="relative aspect-[5/7] w-full bg-slate-900 rounded-xl overflow-hidden border border-arena-border/50 flex items-center justify-center">
-        {!imageError ? (
+        {thumbnail && thumbnail !== failedThumbnail ? (
           <img
-            src={card.imageUrl}
+            src={thumbnail}
             alt={card.name}
-            onError={() => setImageError(true)}
+            onError={() => setFailedThumbnail(thumbnail)}
             className="w-full h-full object-contain p-1 transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
           />
@@ -128,7 +130,7 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onSelect }) => {
         </div>
 
         {/* Precio o acción de tienda si está disponible */}
-        {card.price !== undefined && (
+        {card.price !== undefined && card.price !== null && (
           <div className="mt-2 flex items-center justify-between pt-1">
             <span className="text-xs text-slate-400">Precio tienda</span>
             <div className="flex items-center gap-1 text-amber-300 font-bold text-xs">

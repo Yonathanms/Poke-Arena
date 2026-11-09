@@ -3,31 +3,50 @@
 import asyncio
 from datetime import datetime
 from re import fullmatch
-from uuid import uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.database.postgresql.revisiones import REVISIONES_IDENTIDAD_LOCAL
+from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_original_activo
+from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA, REVISIONES_IDENTIDAD_LOCAL
+from src.shared.destinos_originales import PG_ORIGINAL
 
 from ..domain.sesion_model import (
+    IdentidadEnConflicto,
     IdentidadLimitada,
     IdentidadNoDisponible,
     PerfilUsuario,
     Rol,
 )
+from ..ports.sesiones_ports import SesionActiva
 from .password_local import crear_hash, verificar_hash
+
+_SESION_ACTIVA = """
+    SELECT u.id, u.provider_subject, u.role, u.provider, u.email, s.id
+    FROM identity_sessions s JOIN identity_users u ON u.id = s.user_id
+    WHERE s.token_hash = :huella
+      AND (u.provider = 'GOOGLE' OR (
+          u.provider = 'LOCAL' AND :local
+          AND starts_with(current_database()::text, 'pokearena_alembic_')
+      ))
+      AND s.revoked_at IS NULL AND s.expires_at > statement_timestamp()
+"""
 
 
 async def _destino(sesion: AsyncSession, *, local: bool = False) -> None:
     """Aísla toda escritura y exige la revisión de credenciales para LOCAL."""
-    base, superusuario = (
-        await sesion.execute(
-            text("SELECT current_database(), rolsuper FROM pg_roles WHERE rolname=current_user")
-        )
-    ).one()
-    if not base.startswith("pokearena_alembic_") or superusuario:
+    identidad = tuple((await sesion.execute(IDENTIDAD_SQL)).one())
+    if identidad[0] == PG_ORIGINAL[2]:
+        if (
+            local or not destino_original_activo(identidad, "api")
+            or await sesion.scalar(text("SELECT version_num FROM alembic_version"))
+            != REVISION_TIPO_CUENTA
+        ):
+            raise IdentidadNoDisponible()
+        return
+    if not identidad[0].startswith("pokearena_alembic_") or identidad[3]:
         raise IdentidadNoDisponible()
     if local and await sesion.scalar(text("SELECT version_num FROM alembic_version")) not in (
         REVISIONES_IDENTIDAD_LOCAL
@@ -35,16 +54,103 @@ async def _destino(sesion: AsyncSession, *, local: bool = False) -> None:
         raise IdentidadNoDisponible()
 
 
+def _id_sesion_email_verificado(huella: str, email: str) -> UUID:
+    """Vincula la evidencia del correo al ID persistido de esta sesión."""
+    return uuid5(NAMESPACE_URL, f"pokearena:google-verified-email:{huella}:{email}")
+
+
+def _id_sesion_admin_google(huella: str, email_verificado: str | None) -> UUID:
+    """Identifica una sesión emitida para una cuenta administrativa permanente."""
+    return uuid5(NAMESPACE_URL, f"pokearena:google-admin:{huella}:{email_verificado or ''}")
+
+
+async def _leer_sesion_activa(
+    sesion: AsyncSession, huella: str, *, local: bool, bloquear: bool = False
+) -> SesionActiva | None:
+    consulta = _SESION_ACTIVA + (" FOR SHARE OF u, s" if bloquear else "")
+    fila = (await sesion.execute(text(consulta), {"huella": huella, "local": local})).one_or_none()
+    if fila is None:
+        return None
+    actor, subject, rol, proveedor, email, id_sesion = fila
+    admin_con_correo = (
+        proveedor == "GOOGLE"
+        and isinstance(email, str)
+        and id_sesion == str(_id_sesion_admin_google(huella, email))
+    )
+    correo_verificado = (
+        proveedor == "GOOGLE"
+        and isinstance(email, str)
+        and (admin_con_correo or id_sesion == str(_id_sesion_email_verificado(huella, email)))
+    )
+    if proveedor == "GOOGLE":
+        sesion_admin = admin_con_correo or (
+            id_sesion == str(_id_sesion_admin_google(huella, None))
+        )
+        # Una sesión Google histórica carece de evidencia de su categoría de emisión.
+        if sesion_admin != (rol == "PLATFORM_ADMIN"):
+            return None
+    return str(actor), str(subject), str(rol), str(proveedor), email, correo_verificado
+
+
+class SqlIdentidadColeccion:
+    """Consulta elegibilidad sin abrir otra transacción ni modificar Identidad."""
+
+    def __init__(self, sesion: AsyncSession) -> None:
+        self._sesion = sesion
+
+    async def activa_bloqueada(self, huella: str) -> SesionActiva | None:
+        """Mantiene estable la identidad y sesión frente a login o revocación concurrente."""
+        return await _leer_sesion_activa(self._sesion, huella, local=False, bloquear=True)
+
+    async def verifico_correo(
+        self, usuario_id: str, correos_reservados: frozenset[str]
+    ) -> bool:
+        """Contrasta la evidencia UUID5 de CI-1, incluso en sesiones expiradas o revocadas."""
+        filas = await self._sesion.stream(
+            text("""
+                SELECT id, token_hash FROM identity_sessions
+                WHERE user_id = :usuario AND substr(id, 15, 1) = '5'
+            """),
+            {"usuario": usuario_id},
+        )
+        try:
+            async for id_sesion, huella in filas:
+                if any(
+                    id_sesion in (
+                        str(_id_sesion_email_verificado(huella, correo)),
+                        str(_id_sesion_admin_google(huella, correo)),
+                    )
+                    for correo in correos_reservados
+                ):
+                    return True
+            return False
+        finally:
+            await filas.close()
+
+
 async def _insertar_sesion(
-    sesion: AsyncSession, usuario_id: str, huella: str, expira: datetime
+    sesion: AsyncSession,
+    usuario_id: str,
+    huella: str,
+    expira: datetime,
+    *,
+    email_verificado: str | None = None,
+    admin_google: bool = False,
 ) -> None:
     """Reutiliza la persistencia de sesiones para cualquier proveedor verificado."""
+    # UUID4 identifica sesiones sin evidencia, incluidas todas las históricas.
+    if admin_google:
+        id_sesion = _id_sesion_admin_google(huella, email_verificado)
+    else:
+        id_sesion = (
+            _id_sesion_email_verificado(huella, email_verificado) if email_verificado else uuid4()
+        )
     await sesion.execute(
         text("""
             INSERT INTO identity_sessions (id, user_id, token_hash, expires_at)
             VALUES (:id, :usuario, :huella, :expira)
         """),
-        {"id": str(uuid4()), "usuario": usuario_id, "huella": huella, "expira": expira},
+        {"id": str(id_sesion), "usuario": usuario_id, "huella": huella, "expira": expira},
     )
 
 
@@ -72,49 +178,59 @@ class SqlSesiones:
         huella: str,
         expira: datetime,
         email: str | None = None,
-    ) -> tuple[str, bool]:
-        """Reutiliza una identidad Google por proveedor y subject."""
+        *,
+        email_verified: bool = False,
+    ) -> tuple[str, Rol, bool]:
+        """Registra una categoría una vez y emite sesión solo si sigue siendo compatible."""
         try:
             async with self._factory() as sesion, sesion.begin():
                 await _destino(sesion)
-                existente = (
-                    await sesion.execute(
-                        text("""
-                            SELECT id FROM identity_users
-                            WHERE provider = 'GOOGLE' AND provider_subject = :subject
-                        """),
-                        {"subject": subject},
-                    )
-                ).scalar_one_or_none()
-                es_nuevo = existente is None
-
-                usuario = await sesion.execute(
+                parametros = {"id": str(uuid4()), "subject": subject, "email": email, "rol": rol}
+                usuario = (await sesion.execute(
                     text("""
                         INSERT INTO identity_users (id, provider, provider_subject, email, role)
                         VALUES (:id, 'GOOGLE', :subject, :email, :rol)
-                        ON CONFLICT (provider, provider_subject)
-                        DO UPDATE SET
-                            role = EXCLUDED.role,
-                            email = COALESCE(EXCLUDED.email, identity_users.email),
-                            updated_at = now()
-                        RETURNING id
+                        ON CONFLICT (provider, provider_subject) DO NOTHING
+                        RETURNING id, role
                     """),
-                    {"id": str(uuid4()), "subject": subject, "email": email, "rol": rol},
-                )
-                id_usuario = str(usuario.scalar_one())
+                    parametros,
+                )).one_or_none()
+                es_nuevo = usuario is not None
+                if usuario is None:
+                    # Una sentencia nueva ve al ganador de un alta concurrente en READ COMMITTED.
+                    usuario = (await sesion.execute(
+                        text("""
+                            UPDATE identity_users
+                            SET email = COALESCE(:email, email), updated_at = now()
+                            WHERE provider = 'GOOGLE' AND provider_subject = :subject
+                              AND role = :rol
+                            RETURNING id, role
+                        """),
+                        parametros,
+                    )).one_or_none()
+                if usuario is None:
+                    raise IdentidadEnConflicto()
+                id_usuario = str(usuario.id)
+                tipo: Rol = "PLAYER" if usuario.role == "PLAYER" else "PLATFORM_ADMIN"
 
-                await sesion.execute(
-                    text("""
-                        INSERT INTO player_profiles
-                            (user_id, elo, cubes, has_received_initial_collection)
-                        VALUES (:user_id, 0, 0, false)
-                        ON CONFLICT (user_id) DO NOTHING
-                    """),
-                    {"user_id": id_usuario},
-                )
+                if tipo == "PLAYER":
+                    await sesion.execute(
+                        text("""
+                            INSERT INTO player_profiles (user_id)
+                            VALUES (:user_id) ON CONFLICT (user_id) DO NOTHING
+                        """),
+                        {"user_id": id_usuario},
+                    )
 
-                await _insertar_sesion(sesion, id_usuario, huella, expira)
-            return id_usuario, es_nuevo
+                await _insertar_sesion(
+                    sesion,
+                    id_usuario,
+                    huella,
+                    expira,
+                    email_verificado=email if email_verified is True else None,
+                    admin_google=tipo == "PLATFORM_ADMIN",
+                )
+            return id_usuario, tipo, es_nuevo
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None
 
@@ -197,36 +313,11 @@ class SqlSesiones:
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None
 
-    async def activa(self, huella: str) -> tuple[str, str, str, str, str | None] | None:
+    async def activa(self, huella: str) -> SesionActiva | None:
         """Lee el rol vigente de una sesión permitida, no expirada ni revocada."""
         try:
             async with self._factory() as sesion:
-                fila = (
-                    await sesion.execute(
-                        text("""
-                    SELECT u.id, u.provider_subject, u.role, u.provider, u.email
-                    FROM identity_sessions s JOIN identity_users u ON u.id = s.user_id
-                    WHERE s.token_hash = :huella
-                      AND (u.provider = 'GOOGLE' OR (
-                          u.provider = 'LOCAL' AND :local
-                          AND starts_with(current_database()::text, 'pokearena_alembic_')
-                      ))
-                      AND s.revoked_at IS NULL AND s.expires_at > statement_timestamp()
-                """),
-                        {"huella": huella, "local": self._local},
-                    )
-                ).one_or_none()
-            return (
-                None
-                if fila is None
-                else (
-                    str(fila[0]),
-                    str(fila[1]),
-                    str(fila[2]),
-                    str(fila[3]),
-                    fila[4] if fila[4] is None else str(fila[4]),
-                )
-            )
+                return await _leer_sesion_activa(sesion, huella, local=self._local)
         except SQLAlchemyError:
             raise IdentidadNoDisponible() from None
 

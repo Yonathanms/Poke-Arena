@@ -3,18 +3,23 @@
 import argparse
 import asyncio
 import sys
+from collections.abc import Awaitable, Callable
+from functools import partial
 from getpass import GetPassWarning, getpass
 from importlib import import_module
 from typing import Any
 from warnings import catch_warnings, simplefilter
 
+from fastapi import APIRouter
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.modules.identidad.gestion_sesiones.controllers import sesiones_controller
 from src.shared.config import get_settings
 
 _PAQUETE = f"{__package__}.gestion_sesiones"
 _sql = import_module(f"{_PAQUETE}.adapters.sql_sesiones")
 _servicio = import_module(f"{_PAQUETE}.services.sesiones_service")
 _google = import_module(f"{_PAQUETE}.adapters.google_oidc")
-_http = import_module(f"{_PAQUETE}.controllers.sesiones_controller")
 
 
 def crear_servicio_sesiones() -> Any:
@@ -32,11 +37,29 @@ def crear_servicio_sesiones() -> Any:
     )
 
 
-router, requerir_administrador, requerir_jugador = _http.crear_router(
-    crear_servicio_sesiones, _google.verificar_google
+def crear_autorizacion_coleccion(sesion: AsyncSession) -> Callable[[str], Awaitable[str | None]]:
+    """Vincula la política central de Identidad con la transacción de Jugadores."""
+    ajustes = get_settings()
+    return partial(
+        _servicio.jugador_elegible_para_coleccion,
+        _sql.SqlIdentidadColeccion(sesion),
+        admins=ajustes.admin_google_subjects,
+        admin_emails=ajustes.admin_emails,
+    )
+
+
+requerir_administrador, requerir_jugador = sesiones_controller.crear_dependencias(
+    crear_servicio_sesiones
 )
 Principal = _servicio.Principal
 Rol = _servicio.Rol
+
+
+def crear_router_identidad(provisionar: Callable[[str], Awaitable[None]]) -> APIRouter:
+    """Inyecta el efecto posterior al login sin acoplar Identidad a Jugadores."""
+    return sesiones_controller.crear_router(
+        crear_servicio_sesiones, _google.verificar_google, requerir_jugador, provisionar
+    )
 
 
 async def provisionar_administrador(usuario: str, password: str) -> str:

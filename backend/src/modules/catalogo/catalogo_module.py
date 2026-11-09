@@ -78,8 +78,27 @@ def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
     return modulo.crear_router(
-        administrador, crear_servicio_crear_carta, listar_habilidades, jugador=jugador
+        administrador, crear_servicio_crear_carta, listar_habilidades,
+        jugador=jugador, miniatura=recuperar_miniatura_carta,
     )
+
+
+async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:
+    """Compone la consulta SQL y la lectura del bucket compartido."""
+    from src.database.postgresql.connection import transactional_session
+
+    servicio = import_module(f"{_PAQUETE}.services.miniaturas_service")
+
+    async def buscar_referencia(identificador: str) -> str | None:
+        async with transactional_session() as sesion:
+            repo = crear_repositorio_cartas(sesion)
+            referencia: str | None = await repo.buscar_referencia_miniatura(identificador)
+            return referencia
+
+    datos: bytes | None = await servicio.recuperar_miniatura(
+        carta_id, buscar_referencia, crear_almacen_imagenes(),
+    )
+    return datos
 
 
 def router_ubicaciones(administrador: Any | None = None) -> Any:
@@ -93,12 +112,11 @@ def router_ubicaciones(administrador: Any | None = None) -> Any:
 def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
     """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
     from src.database.mongodb.connection import get_mongo_db
-    from src.database.mongodb.destinos_outbox import MONGO_F5_BASE
     from src.database.postgresql.connection import AsyncSessionLocal
     from src.shared.config import get_settings
 
     ajustes = get_settings()
-    db = get_mongo_db(conexion_directa=ajustes.MONGO_DB == MONGO_F5_BASE)
+    db = get_mongo_db(conexion_directa=True)
     almacen = outbox_mongo.MongoProyeccionCartas(db["cards_projection"])
     repo = outbox_sql.SqlOutboxCartas(
         AsyncSessionLocal, ajustes.OUTBOX_LEASE_SECONDS, ajustes.OUTBOX_MAX_ATTEMPTS

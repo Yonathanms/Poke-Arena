@@ -28,11 +28,11 @@ python manage.py install
 ```
 
 Este comando automatiza todo:
-* Genera `.env` en raíz si no existe (permisos `0600` en macOS/Linux). La plantilla deja secretos y URLs vacíos: deben completarse de forma privada con credenciales verificadas; copiarla no inicializa usuarios.
+* Usa el `.env` privado que ya exista. La plantilla `.env.example` dejó de versionarse en esta rama, por lo que un checkout nuevo necesita que el operador prepare la configuración privada antes de ejecutar el instalador.
 * Crea el entorno virtual de Python (`backend/.venv`) e instala los paquetes necesarios.
 * Descarga e instala los paquetes de Node.js en `frontend/`.
 
-*(Si en algún momento solo quieres regenerar el archivo de configuración sin reinstalar librerías, puedes ejecutar: `python manage.py env`).*
+Mantén `.env` fuera de Git. Para el catálogo aislado, proporciona los destinos y las credenciales técnicas por un canal privado.
 
 ---
 
@@ -50,6 +50,8 @@ python manage.py dbs
 ---
 
 ### Paso 3: Aprovisionar Base de Datos y Administrador Local (setup-dev)
+
+> Procedimiento legado con escrituras. En esta rama apunta a los contenedores locales en los puertos originales. Para reproducir CI-5, utiliza destinos desechables explícitos. Para consultar el catálogo CI-4 existente, usa solo el dry-run en el par aislado.
 Para configurar automáticamente las tablas en PostgreSQL mediante Alembic, crear los índices de MongoDB y registrar el usuario Administrador Maestro para pruebas locales, ejecuta desde la raíz:
 
 ```powershell
@@ -60,12 +62,12 @@ python manage.py setup-dev
 Este comando realiza las siguientes tareas de forma segura y automatizada:
 * Verifica y asegura la red Docker (`poke-arena_default`) y los volúmenes persistentes.
 * Crea y configura la base de datos de desarrollo `pokearena_alembic_frontend_dev` con el usuario migrador `pokearena_migrator`.
-* Aplica todas las migraciones de esquema con Alembic hasta la revisión `1g_local_master_admin`.
+* Ejecuta `alembic upgrade heads`. La cabeza actual es `014_identity_account_immutable`.
 * Otorga privilegios de tabla al usuario de aplicación en PostgreSQL.
 * Crea el índice único en MongoDB (`cards_projection.code`).
 * Aprovisiona al Administrador Maestro local en `identity_users` con hash scrypt:
   * **Usuario:** `maestro-local`
-  * **Contraseña:** `PokeArenaMaster2026!`
+  * **Contraseña:** la configurada explícitamente por el operador para ese entorno de desarrollo.
   * **Rol asignado:** `PLATFORM_ADMIN`
 
 ---
@@ -103,7 +105,7 @@ npm run dev
 * Aplicación Web en vivo: http://localhost:5173
   * **Portal de Administración (Crear Carta - 2.1.1):** Ingresa con las credenciales de administrador local:
     * **Usuario:** `maestro-local`
-    * **Contraseña:** `PokeArenaMaster2026!`
+    * **Contraseña:** la configurada explícitamente por el operador para ese entorno de desarrollo.
   * **Portal de Jugador (Buscar Carta - 2.1.2):** En la pantalla de login, haz clic en el enlace superior *"Ver Catálogo Público (Jugador) →"* o ingresa directamente con el parámetro de vista: http://localhost:5173/?view=player
 
 ---
@@ -114,10 +116,10 @@ Todos estos comandos se ejecutan desde la raíz del proyecto (`Poke-Arena/`):
 
 | Comando | Descripción |
 | :--- | :--- |
-| **`python manage.py install`** | Genera el `.env` e instala dependencias de Backend y Frontend. |
-| **`python manage.py env`** | Genera exclusivamente el archivo `.env` a partir de `.env.example`. |
+| **`python manage.py install`** | Instala dependencias de backend y frontend. Requiere configuración privada en un checkout nuevo. |
+| **`python manage.py env`** | Usa el `.env` existente o copia una plantilla local. Esta rama no versiona la plantilla. |
 | **`python manage.py dbs`** | Enciende PostgreSQL y MongoDB en Docker. |
-| **`python manage.py setup-dev`** | Aprovisiona PostgreSQL (Alembic 1g), MongoDB y el usuario administrador local (`maestro-local`). |
+| **`python manage.py setup-dev`** | Aprovisionamiento legado con escrituras en PostgreSQL, MongoDB e Identidad LOCAL. |
 | **`python manage.py stop`** | Detiene los contenedores de Docker conservando los datos guardados. |
 | **`python manage.py clean`** | Comando destructivo legado: NO utilizar durante esta entrega. |
 | **`python manage.py status`** | Consulta el estado y puertos de los contenedores Docker. |
@@ -135,12 +137,11 @@ Todos estos comandos se ejecutan desde la raíz del proyecto (`Poke-Arena/`):
 Poke-Arena/
 ├── docker-compose.yml              # Bases de datos: PostgreSQL (:5432) y MongoDB (:27017)
 ├── manage.py                       # CLI para automatizar tareas del equipo
-├── .env.example                    # Plantilla oficial de variables de entorno
 │
 ├── frontend/                       # APLICACIÓN WEB (React + TypeScript + Tailwind)
 │   └── src/
 │       ├── 📁 web_admin/           # Portal de Administradores (Gestión de Catálogo)
-│       ├── 📁 web_player/          # Portal de Jugadores (Colección y Partidas)
+│       ├── 📁 web_player/          # Portal de Jugadores (Catálogo y perfil)
 │       └── 📁 portal_b2b/          # Portal de Organizaciones B2B (Torneos)
 │
 └── backend/                        # API REST (FastAPI + SQLAlchemy + MongoDB)
@@ -195,10 +196,10 @@ Se verificaron destinos exclusivos `/docker-entrypoint-initdb.d`, CMD/entrypoint
 
 ### Credenciales y rutas
 
-- `.env.example` no contiene contraseñas ni URLs con credenciales. `.env` en raíz es privado, ignorado por Git y creado localmente con permisos `0600`.
+- En esta rama `.env.example` dejó de versionarse. `.env` en raíz es privado, ignorado por Git y debe tener permisos `0600`.
 - Configuración central en `backend/src/shared/config.py`: el `.env` de raíz se localiza por la ruta del archivo, independientemente del directorio de ejecución. Variables del proceso tienen prioridad. `UPLOAD_DIR` relativo también se resuelve desde raíz, sin crear archivos al importar.
 - `DATABASE_URL` y `MONGO_URL` son obligatorias, se excluyen de representaciones/serialización ordinaria y sus valores no aparecen en errores de validación. Se mantienen como cadenas por compatibilidad con los consumidores existentes, incluido Alembic, que no se modificó.
-- No hay credenciales por defecto en código. `DEBUG=false`, parámetros SQL ocultos y timeout de conexión configurable (`DB_CONNECT_TIMEOUT_SECONDS`, 1–60 segundos; valor inicial 5).
+- La configuración de FastAPI requiere URLs explícitas. El aprovisionador legado `setup-dev` conserva valores fijos de desarrollo y queda fuera del procedimiento de CI-5. `DEBUG=false`, parámetros SQL ocultos y timeout de conexión configurable (`DB_CONNECT_TIMEOUT_SECONDS`, 1–60 segundos; valor inicial 5).
 - La autorización posterior revocó la decisión de conservar las credenciales inválidas. Se renovó `poke_api_user` y se creó `poke_api_mongo`, con secretos aleatorios guardados únicamente en `.env`. Las URLs se habilitaron después de verificar autenticación y permisos; FastAPI usa esas cuentas, sin fallback administrativo. La contraseña administrativa no se rotó.
 - La validación final utiliza los módulos oficiales y las URLs ordinarias de `.env`, sin inyectar administración: `poke_api_user`/`poke_api_mongo` autentican desde raíz y `backend/`. Solo se ejecutaron lecturas, consultas de permisos y ping; las pruebas no modificaron registros de negocio.
 - Los healthchecks están aplicados y ambos servicios están `healthy`: SQL mediante TCP autenticado y Mongo mediante ping autenticado. La recreación corrigió las antiguas variables administrativas incongruentes con los usuarios persistidos. Las credenciales de aplicación ya no se propagan al entorno de los contenedores de bases.
@@ -403,3 +404,45 @@ Consulta el [ensayo desde cero y plan de despliegue](backend/docs/contracts/CARD
 y el [contrato HTTP para React](backend/docs/contracts/CARD_CREATION_FRONTEND_HANDOFF.md).
 Google real, el despliegue original y el desarrollo frontend requieren
 autorizaciones separadas.
+
+## Colección inicial de jugadores
+
+Las dos rutas existentes de login Google intentan provisionar el premio de un
+jugador autenticado. El paquete se consulta con
+`GET /api/v1/player/initial-pack` y se confirma con
+`POST /api/v1/player/initial-pack/open`, usando el Bearer de Poké-Arena.
+El entorno aislado requiere Alembic 014 y permiso de actualización en
+`player_profiles.initial_pack_opened_at`. Consulta los
+[estados y errores HTTP](backend/docs/contracts/INITIAL_COLLECTION_BACKEND_3_1_1.md#15-integración-http-en-ci-3b). El backend está aprobado con observaciones para el onboarding React. Consulta el [informe CI-5E](backend/docs/contracts/CI_5_INFORME_CIERRE_BACKEND.md) para conocer la evidencia y el alcance de la integración.
+
+## Catálogo de prueba CI-4
+
+`backend/seed_cartas_ci4.py` genera 80 cartas, 20 por rareza, a partir de
+`prueba/ip.png`. El lote predeterminado es `CI4-2026` y la semilla es `2026`.
+Los nombres usan el prefijo `CI-SEED-<lote>--<rareza>-` y cada solicitud
+conserva su clave de idempotencia al reanudar.
+
+```bash
+backend/.venv/bin/python -B backend/seed_cartas_ci4.py --solo-plan --seed 2026 --lote CI4-2026
+backend/.venv/bin/python -B backend/seed_cartas_ci4.py --dry-run --seed 2026 --lote CI4-2026
+backend/.venv/bin/python -B backend/seed_cartas_ci4.py --apply --confirm-isolated \
+  --seed 2026 --lote CI4-2026 --backup-dir /ruta/privada/respaldo-ci4
+```
+
+`--solo-plan` valida la imagen y muestra el lote sin conectarse. El dry-run
+es predeterminado y usa `DATABASE_URL`, `MONGO_URL`, `MONGO_DB` y
+`CI4_PROJECTION_MONGO_URL` suministradas al proceso. La herramienta no carga
+archivos de entorno. Para aplicar, suministrar además `CI4_ADMIN_BEARER` de
+la misma base y mantener disponible el consumidor oficial de Outbox con su
+credencial de proyección. El CLI consulta la proyección hasta `--espera`
+segundos y reporta un lote incompleto si quedan pendientes.
+
+El destino persistente permitido es PostgreSQL 014 en
+`127.0.0.1:15433/pokearena_alembic_frontend_dev` y MongoDB en
+`127.0.0.1:27029/pokearena_catalog_frontend_dev`. Apply en ese par requiere
+autorización posterior al dry-run y respaldos generados por el operador:
+`postgres.dump` en formato de `pg_restore` y un volcado MongoDB con gzip
+bajo `mongo/pokearena_catalog_frontend_dev/`. El CLI lee los respaldos
+localmente y no restaura datos. Los ensayos descartables usan los prefijos
+`pokearena_alembic_ci4_test_` y `pokearena_outbox_ci4_test_` en otros puertos.
+Consulta el [contrato CI-4](backend/docs/contracts/CI_4_CONTRATO_SEED_80_CARTAS.md).

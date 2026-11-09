@@ -56,6 +56,10 @@ class IdentidadInvalida(Exception):
     """La credencial no acredita una identidad válida."""
 
 
+class IdentidadEnConflicto(Exception):
+    """La autorización vigente es incompatible con el tipo permanente de la cuenta."""
+
+
 class IdentidadLimitada(Exception):
     """Presupuesto temporal de intentos agotado o verificación simultánea."""
 

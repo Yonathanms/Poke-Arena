@@ -286,7 +286,8 @@ async function parseErrorResponse(response: Response): Promise<ApiHttpError> {
  */
 export async function requestApiWithMeta<T>(
   endpoint: string,
-  options: ApiRequestOptions = {}
+  options: ApiRequestOptions = {},
+  readBody: (response: Response) => Promise<unknown> = (response) => response.json(),
 ): Promise<ApiResponse<T>> {
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
   const baseUrl = options.baseUrl ?? DEFAULT_API_PREFIX;
@@ -332,7 +333,7 @@ export async function requestApiWithMeta<T>(
     };
   }
 
-  const data = (await response.json()) as T;
+  const data = (await readBody(response)) as T;
   return {
     status: response.status,
     data,

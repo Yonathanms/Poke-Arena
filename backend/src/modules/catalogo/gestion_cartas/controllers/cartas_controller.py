@@ -3,7 +3,17 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from pydantic import ValidationError
 from python_multipart.exceptions import MultipartParseError
 from starlette.datastructures import FormData, UploadFile
@@ -17,6 +27,7 @@ from ..adapters.mongo_carta_repository import MongoCartaRepository
 from ..domain.carta_model import DatosCarta
 from ..domain.imagen_model import MAX_IMAGE_BYTES
 from ..ports.cartas_ports import ErrorPersistencia
+from ..ports.imagen_ports import ErrorImagen
 from ..services.cartas_service import (
     ActorCreacion,
     CartasService,
@@ -32,6 +43,8 @@ from .cartas_dtos import (
     CartaSearchQueryDTO,
     CartaSearchResponseDTO,
     HabilidadSeleccionable,
+    RarezaCarta,
+    TipoCarta,
     esquema_multipart,
 )
 
@@ -143,10 +156,40 @@ def crear_router(
     servicio: Callable[[], CrearCarta],
     habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
     jugador: Callable[..., Awaitable[Any]] | None = None,
+    miniatura: Callable[[str], Awaitable[bytes | None]] | None = None,
 ) -> APIRouter:
     """Registra la creación y consulta de cartas con autorización de plataforma."""
     router = APIRouter(prefix="/content", tags=["Content Cards"])
     auth_jugador = jugador if jugador is not None else administrador
+
+    if miniatura is not None:
+        @router.get(
+            "/cards/{card_id}/thumbnail",
+            response_class=Response,
+            responses={
+                200: {
+                    "content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}},
+                },
+                **respuestas_documentadas({
+                    401: "Sesión requerida", 403: "Rol insuficiente",
+                    404: "Miniatura no encontrada", 503: "Medios no disponibles",
+                }),
+            },
+        )
+        async def obtener_miniatura(
+            card_id: Annotated[str, Path(min_length=1, max_length=36)],
+            _actor: Any = Depends(auth_jugador),
+        ) -> Response:
+            try:
+                datos = await miniatura(card_id)
+            except (ErrorPersistencia, ErrorImagen):
+                raise problema(503, "miniatura_no_disponible", "Miniatura no disponible.") from None
+            if datos is None:
+                raise problema(404, "miniatura_no_encontrada", "Miniatura no encontrada.")
+            return Response(
+                datos, media_type="image/webp",
+                headers={"Cache-Control": "private, max-age=300", "Vary": "Authorization"},
+            )
 
     @router.get(
         "/abilities",
@@ -218,12 +261,14 @@ def crear_router(
         status_code=status.HTTP_200_OK,
         summary="Buscar y filtrar cartas del catálogo",
         description="Búsquedas rápidas optimizadas con MongoDB por texto, tipo y rareza.",
-        responses=respuestas_documentadas({401: "Sesión requerida"}),
+        responses=respuestas_documentadas(
+            {401: "Sesión requerida", 422: "Filtros inválidos", 503: "Catálogo no disponible"}
+        ),
     )
     async def buscar_cartas(
         q: Annotated[str | None, Query(description="Nombre, código o texto descriptivo")] = None,
-        tipo: Annotated[str | None, Query(description="Tipo elemental (ej. FUE, AGU)")] = None,
-        rareza: Annotated[str | None, Query(description="Rareza (COMUN, RARA, etc.)")] = None,
+        tipo: Annotated[TipoCarta | None, Query(description="Tipo elemental")] = None,
+        rareza: Annotated[RarezaCarta | None, Query(description="Rareza de catálogo")] = None,
         limite: Annotated[int, Query(ge=1, le=100, description="Cartas por página")] = 15,
         pagina: Annotated[int, Query(ge=1, description="Número de página")] = 1,
         _actor: Any = Depends(auth_jugador),
@@ -232,19 +277,24 @@ def crear_router(
         srv = CartasService(repository=repo)
         search_params = CartaSearchQueryDTO(
             q=q,
-            tipo=tipo,  # type: ignore[arg-type]
-            rareza=rareza,  # type: ignore[arg-type]
+            tipo=tipo,
+            rareza=rareza,
             limite=limite,
             pagina=pagina,
         )
-        return await srv.buscar_cartas(search_params)
+        try:
+            return await srv.buscar_cartas(search_params)
+        except ErrorPersistencia:
+            raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
 
     @router.get(
         "/cards/{identificador}",
         response_model=CartaResponseDTO,
         status_code=status.HTTP_200_OK,
         summary="Obtener detalle de carta por ID o Código",
-        responses=respuestas_documentadas({401: "Sesión requerida", 404: "Carta no encontrada"}),
+        responses=respuestas_documentadas(
+            {401: "Sesión requerida", 404: "Carta no encontrada", 503: "Catálogo no disponible"}
+        ),
     )
     async def obtener_detalle_carta(
         identificador: str,
@@ -252,7 +302,10 @@ def crear_router(
     ) -> CartaResponseDTO:
         repo = MongoCartaRepository()
         srv = CartasService(repository=repo)
-        carta = await srv.obtener_detalle_carta(identificador)
+        try:
+            carta = await srv.obtener_detalle_carta(identificador)
+        except ErrorPersistencia:
+            raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
         if not carta:
             raise problema(
                 404, "carta_no_encontrada", f"No se encontró carta '{identificador}'."

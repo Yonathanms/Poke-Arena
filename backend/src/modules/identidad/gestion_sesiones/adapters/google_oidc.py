@@ -6,6 +6,7 @@ from functools import lru_cache
 
 import jwt
 from jwt import (
+    PyJWK,
     PyJWKClient,
     PyJWKClientConnectionError,
     PyJWKClientError,
@@ -28,6 +29,7 @@ class IdentidadGoogle(str):
     email: str | None
     name: str | None
     picture: str | None
+    email_verified: bool
 
     def __new__(
         cls,
@@ -35,12 +37,15 @@ class IdentidadGoogle(str):
         email: str | None = None,
         name: str | None = None,
         picture: str | None = None,
+        *,
+        email_verified: bool = False,
     ) -> "IdentidadGoogle":
         obj = super().__new__(cls, subject)
         obj.subject = subject
         obj.email = email
         obj.name = name
         obj.picture = picture
+        obj.email_verified = email_verified
         return obj
 
 
@@ -55,22 +60,26 @@ def _verificar(credencial: str, client_id: str) -> IdentidadGoogle:
         header = jwt.get_unverified_header(credencial)
         kid = header.get("kid")
         if header.get("alg") != "RS256" or not isinstance(kid, str) or not 0 < len(kid) <= 128:
-            logger.warning("Cabecera JWT de Google rechazada: alg=%s, kid=%s", header.get("alg"), kid)
+            logger.warning("oidc_google_cabecera_invalida")
             raise IdentidadInvalida()
 
         client = _claves()
+        clave: PyJWK | None
         if hasattr(client, "get_signing_key"):
             try:
                 clave = client.get_signing_key(kid)
             except PyJWKClientConnectionError:
                 raise IdentidadNoDisponible() from None
-            except PyJWKClientError as err:
-                logger.warning("No se encontró clave pública para kid %s: %s", kid, err)
+            except PyJWKClientError:
+                logger.warning("oidc_google_clave_no_encontrada")
                 raise IdentidadInvalida() from None
         else:
-            clave = next((k for k in client.get_signing_keys() if getattr(k, "key_id", None) == kid), None)
+            clave = next(
+                (k for k in client.get_signing_keys() if getattr(k, "key_id", None) == kid),
+                None,
+            )
             if clave is None:
-                logger.warning("No se encontró clave en signing_keys para kid %s", kid)
+                logger.warning("oidc_google_clave_no_encontrada")
                 raise IdentidadInvalida()
 
         signing_key = clave.key if hasattr(clave, "key") else clave
@@ -86,15 +95,11 @@ def _verificar(credencial: str, client_id: str) -> IdentidadGoogle:
         )
     except PyJWKClientConnectionError:
         raise IdentidadNoDisponible() from None
-    except PyJWTError as err:
-        logger.warning(
-            "Fallo en verificación criptográfica de Google ID token (%s): %s",
-            type(err).__name__,
-            err,
-        )
+    except PyJWTError:
+        logger.warning("oidc_google_jwt_invalido")
         raise IdentidadInvalida() from None
-    except (ValueError, TypeError, OverflowError) as err:
-        logger.warning("Estructura de Google ID token inválida (%s): %s", type(err).__name__, err)
+    except (ValueError, TypeError, OverflowError):
+        logger.warning("oidc_google_estructura_invalida")
         raise IdentidadInvalida() from None
 
     subject = claims.get("sub")
@@ -111,7 +116,7 @@ def _verificar(credencial: str, client_id: str) -> IdentidadGoogle:
     # Validación de Authorized Party (azp) según OpenID Connect Core 1.0 §3.1.3.7
     azp = claims.get("azp")
     if azp is not None and azp != client_id:
-        logger.warning("Claim azp (%s) no coincide con client_id configurado (%s)", azp, client_id)
+        logger.warning("oidc_google_azp_invalido")
         raise IdentidadInvalida()
 
     exp = claims.get("exp")
@@ -134,6 +139,7 @@ def _verificar(credencial: str, client_id: str) -> IdentidadGoogle:
         email=email,
         name=name,
         picture=picture,
+        email_verified=email is not None and claims.get("email_verified") is True,
     )
 
 
