@@ -5,16 +5,24 @@
  * 1. Consultar el perfil persistido en PostgreSQL (`GET /api/v1/identity/me`) mediante `usePlayerProfile`.
  * 2. Mostrar la información del usuario, puntuación ELO, cubos de energía y verificación de conexión a SQL.
  * 3. Proporcionar la acción de cierre de sesión coordinada con el store en memoria.
+ * 4. Gestionar los tabs de navegación: Perfil, Catálogo & Colección, Decks.
  */
 
 import React, { useState } from "react";
-import { User, BookOpen } from "lucide-react";
+import { User, BookOpen, Layers } from "lucide-react";
 import { ProfileHeader } from "../components/ProfileHeader";
 import { PlayerStatsGrid } from "../components/PlayerStatsGrid";
 import { DatabaseVerificationCard } from "../components/DatabaseVerificationCard";
 import { usePlayerProfile } from "../hooks/usePlayerProfile";
 import { AlertBanner } from "../../../../shared/components/AlertBanner";
 import { SearchCardsScreen } from "../../catalogo/screens/SearchCardsScreen";
+import { useDecks } from "../../decks/hooks/useDecks";
+import { CreateDeckScreen } from "../../decks/screens/CreateDeckScreen";
+import { EditDeckScreen } from "../../decks/screens/EditDeckScreen";
+import { DecksTabContent } from "../../decks/components/DecksTabContent";
+
+type ActiveTab = "perfil" | "catalogo" | "decks";
+type DeckSubView = "list" | "create" | "edit";
 
 export interface VistaPrincipalScreenProps {
   readonly onLogout: () => void;
@@ -26,7 +34,38 @@ export function VistaPrincipalScreen({
   isLoggingOut = false,
 }: VistaPrincipalScreenProps): React.ReactElement {
   const { profile, isLoading, error, reload } = usePlayerProfile();
-  const [activeTab, setActiveTab] = useState<"perfil" | "catalogo">("perfil");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("perfil");
+  const [deckSubView, setDeckSubView] = useState<DeckSubView>("list");
+  const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
+  const { deckCount, isLoading: decksLoading, reload: reloadDecks } = useDecks();
+
+  // Pantallas full-screen de creación/edición de decks (bypasan el layout de tabs)
+  if (deckSubView === "create") {
+    return (
+      <CreateDeckScreen
+        onBack={() => setDeckSubView("list")}
+        onSuccess={() => {
+          reloadDecks();
+          setDeckSubView("list");
+          setActiveTab("decks");
+        }}
+      />
+    );
+  }
+
+  if (deckSubView === "edit" && editingDeckId) {
+    return (
+      <EditDeckScreen
+        deckId={editingDeckId}
+        onBack={() => { setDeckSubView("list"); setEditingDeckId(null); }}
+        onSuccess={() => {
+          reloadDecks();
+          setDeckSubView("list");
+          setEditingDeckId(null);
+        }}
+      />
+    );
+  }
 
   if (isLoading) {
     return (
@@ -81,8 +120,8 @@ export function VistaPrincipalScreen({
           isLoggingOut={isLoggingOut}
         />
 
-        {/* Navegación por pestañas del Jugador: Perfil vs Catálogo & Colección */}
-        <div className="flex items-center gap-2 border-b border-arena-border/60 pb-3">
+        {/* Navegación por pestañas */}
+        <div className="flex items-center gap-2 border-b border-arena-border/60 pb-3 flex-wrap">
           <button
             type="button"
             onClick={() => setActiveTab("perfil")}
@@ -113,20 +152,48 @@ export function VistaPrincipalScreen({
               Explorar
             </span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("decks")}
+            data-testid="tab-player-decks"
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "decks"
+                ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20"
+                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Decks</span>
+            {!decksLoading && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === "decks"
+                  ? "bg-violet-900/60 text-violet-200 border border-violet-400/40"
+                  : "bg-slate-700 text-slate-300"
+              }`}>
+                {deckCount}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Vista activa según la pestaña seleccionada */}
         {activeTab === "perfil" ? (
           <div className="flex flex-col gap-6 animate-fade-in">
-            {/* Cuadrícula de estadísticas de juego */}
             <PlayerStatsGrid profile={profile} />
-
-            {/* Tarjeta de verificación técnica contra PostgreSQL */}
             <DatabaseVerificationCard profile={profile} />
+          </div>
+        ) : activeTab === "catalogo" ? (
+          <div className="animate-fade-in">
+            <SearchCardsScreen mode="player" />
           </div>
         ) : (
           <div className="animate-fade-in">
-            <SearchCardsScreen mode="player" />
+            <DecksTabContent
+              onCreateDeck={() => setDeckSubView("create")}
+              onEditDeck={(deckId) => { setEditingDeckId(deckId); setDeckSubView("edit"); }}
+              onDecksChanged={reloadDecks}
+            />
           </div>
         )}
       </div>

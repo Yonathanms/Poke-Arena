@@ -1,6 +1,4 @@
-/**
- * Cuadrícula de estadísticas del jugador (ELO, Cubos, Colección Inicial).
- */
+/** Cuadrícula de estadísticas del jugador (ELO, Cubos, Colección Inicial). */
 
 import React from "react";
 import type { PlayerProfileDTO } from "../types/vista_principal.types";
@@ -11,7 +9,7 @@ export interface PlayerStatsGridProps {
 
 export function PlayerStatsGrid({ profile }: PlayerStatsGridProps): React.ReactElement {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {/* Tarjeta ELO */}
       <div className="p-5 rounded-2xl bg-slate-900/80 border border-arena-border shadow-lg">
         <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -63,6 +61,7 @@ export function PlayerStatsGrid({ profile }: PlayerStatsGridProps): React.ReactE
         </div>
         <p className="text-[11px] text-slate-500 mt-1">Paquete de bienvenida de 12 cartas</p>
       </div>
+
     </div>
   );
 }
