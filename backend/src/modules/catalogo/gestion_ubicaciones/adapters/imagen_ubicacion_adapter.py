@@ -1,11 +1,11 @@
-"""Adaptador Pillow: valida proporción 4:3 y genera WebP grande + miniatura 320×240."""
+"""Adaptador Pillow + GridFS: valida proporción 4:3 y guarda WebP en MongoDB GridFS."""
 import io
-import uuid
-from pathlib import Path
 
 from fastapi import HTTPException, status
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from PIL import Image
 
+from src.database.mongodb.connection import get_mongo_db
 from src.shared.config import get_settings
 
 settings = get_settings()
@@ -17,11 +17,11 @@ _MIN_ALTO = 600
 _MAX_BYTES = settings.MAX_IMAGE_SIZE_MB * 1024 * 1024
 _TIPOS_PERMITIDOS = {"image/png", "image/jpeg", "image/webp"}
 _THUMB_W, _THUMB_H = 320, 240
+_PREFIX = "gridfs:"
 
 
 class ImagenUbicacionAdapter:
     async def procesar(self, archivo_bytes: bytes, content_type: str) -> tuple[str, str]:
-        # Siguiente paso: validar formato, tamaño y proporciones
         if content_type not in _TIPOS_PERMITIDOS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -53,17 +53,20 @@ class ImagenUbicacionAdapter:
                 detail="La imagen debe tener proporción 4:3 exacta.",
             )
 
-        # Siguiente paso: guardar versión grande y miniatura en WebP
-        base_nombre = uuid.uuid4().hex
-        carpeta = Path(settings.UPLOAD_DIR) / "locations"
-        carpeta.mkdir(parents=True, exist_ok=True)
-
         imagen_rgb = imagen.convert("RGB")
-        nombre_grande = f"{base_nombre}_grande.webp"
-        imagen_rgb.save(carpeta / nombre_grande, format="WEBP", quality=85)
+
+        buf_grande = io.BytesIO()
+        imagen_rgb.save(buf_grande, format="WEBP", quality=85)
+        datos_grande = buf_grande.getvalue()
 
         miniatura = imagen_rgb.resize((_THUMB_W, _THUMB_H), Image.LANCZOS)
-        nombre_tablero = f"{base_nombre}_tablero.webp"
-        miniatura.save(carpeta / nombre_tablero, format="WEBP", quality=80)
+        buf_tablero = io.BytesIO()
+        miniatura.save(buf_tablero, format="WEBP", quality=80)
+        datos_tablero = buf_tablero.getvalue()
 
-        return f"/media/locations/{nombre_grande}", f"/media/locations/{nombre_tablero}"
+        mongo_db = get_mongo_db()
+        bucket = AsyncIOMotorGridFSBucket(mongo_db, bucket_name="location_images")
+        id_grande = await bucket.upload_from_stream("large.webp", datos_grande)
+        id_tablero = await bucket.upload_from_stream("thumbnail.webp", datos_tablero)
+
+        return f"{_PREFIX}{id_grande}", f"{_PREFIX}{id_tablero}"
