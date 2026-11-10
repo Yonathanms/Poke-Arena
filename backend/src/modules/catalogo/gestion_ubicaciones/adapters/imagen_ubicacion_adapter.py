@@ -2,7 +2,7 @@
 import io
 
 from fastapi import HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+from gridfs import AsyncGridFSBucket
 from PIL import Image
 
 from src.database.mongodb.connection import get_mongo_db
@@ -65,7 +65,7 @@ class ImagenUbicacionAdapter:
         datos_tablero = buf_tablero.getvalue()
 
         mongo_db = get_mongo_db()
-        bucket = AsyncIOMotorGridFSBucket(mongo_db, bucket_name="location_images")
+        bucket = AsyncGridFSBucket(mongo_db, bucket_name="location_images")
         id_grande = await bucket.upload_from_stream("large.webp", datos_grande)
         id_tablero = await bucket.upload_from_stream("thumbnail.webp", datos_tablero)
 
