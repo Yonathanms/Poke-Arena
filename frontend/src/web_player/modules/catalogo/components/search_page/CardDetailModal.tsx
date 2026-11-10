@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Sparkles, Shield, Zap, Flame, CheckCircle, Info } from 'lucide-react';
 import { PokemonCard, CardType, CardRarity } from '../../types/card.types';
-import { useCardThumbnail } from '../../hooks/useCardThumbnail';
+import { useCardImage, useCardThumbnail } from '../../hooks/useCardThumbnail';
 
 interface CardDetailModalProps {
   card: PokemonCard | null;
@@ -60,8 +60,10 @@ const RARITY_BADGE: Record<CardRarity, { label: string; class: string }> = {
 export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, onClose }) => {
   if (!card) return null;
 
+  const largeImage = useCardImage(card.id);
   const thumbnail = useCardThumbnail(card.id);
-  const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
+  const displayImage = largeImage || thumbnail;
+  const [failedImage, setFailedImage] = useState<string | null>(null);
   const typeConfig = TYPE_CONFIG[card.type] || DEFAULT_TYPE_CONFIG;
   const rarityConfig = RARITY_BADGE[card.rarity] || RARITY_BADGE.COMUN;
   const isOwned = (card.owned_copies ?? 0) > 0;
@@ -89,11 +91,11 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, onClose 
         {/* Vista grande de la imagen de la carta */}
         <div className="w-full md:w-1/2 flex flex-col items-center justify-center">
           <div className={`relative aspect-[5/7] w-full max-w-[280px] bg-slate-900 rounded-2xl overflow-hidden border-2 border-arena-border shadow-2xl ${typeConfig.glowClass} flex items-center justify-center p-2`}>
-            {thumbnail && thumbnail !== failedThumbnail ? (
+            {displayImage && displayImage !== failedImage ? (
               <img
-                src={thumbnail}
+                src={displayImage}
                 alt={card.name}
-                onError={() => setFailedThumbnail(thumbnail)}
+                onError={() => setFailedImage(displayImage)}
                 className="w-full h-full object-contain drop-shadow-2xl"
               />
             ) : (

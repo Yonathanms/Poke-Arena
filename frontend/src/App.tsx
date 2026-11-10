@@ -19,7 +19,7 @@ import { WelcomeLoginScreen } from "./shared/components/WelcomeLoginScreen";
 import { InitialPackOnboardingScreen } from "./web_player/modules/coleccion_inicial/screens/InitialPackOnboardingScreen";
 import { CreateCardScreen } from "./web_admin/modules/catalogo/screens/CreateCardScreen";
 import { CreateLocationScreen } from "./web_admin/modules/catalogo/screens/CreateLocationScreen";
-import { SearchCardsScreen } from "./web_player/modules/catalogo/screens/SearchCardsScreen";
+import { AdminSearchCardsScreen } from "./web_admin/modules/catalogo/screens/AdminSearchCardsScreen";
 import { VistaPrincipalScreen } from "./web_player/modules/vista_principal/screens/VistaPrincipalScreen";
 import { AdminLayout } from "./web_admin/shared/AdminLayout";
 
@@ -95,7 +95,10 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
     (adminTab === "ubicaciones" ? (
       <CreateLocationScreen />
     ) : adminTab === "buscador" ? (
-      <SearchCardsScreen />
+      <AdminSearchCardsScreen
+        onNavigateToCreate={() => setAdminTab("cartas")}
+        onNavigateToPlayerView={() => setAdminTab("jugador")}
+      />
     ) : adminTab === "jugador" ? (
       <VistaPrincipalScreen
         onLogout={logout}

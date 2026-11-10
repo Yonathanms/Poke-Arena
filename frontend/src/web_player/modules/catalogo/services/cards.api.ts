@@ -37,6 +37,19 @@ export async function fetchCardThumbnail(id: string, signal: AbortSignal): Promi
   return data;
 }
 
+export async function fetchCardImage(id: string, signal: AbortSignal): Promise<Blob> {
+  ensureAuthHttpBridgeConfigured();
+  const { data } = await requestApiWithMeta<Blob>(
+    `${CARDS_ENDPOINT}/${encodeURIComponent(id)}/image`,
+    { signal, headers: { Accept: "image/webp, image/png, */*" } },
+    (response) => response.blob(),
+  );
+  if (data.size === 0) {
+    throw new Error("La imagen recibida no es válida.");
+  }
+  return data;
+}
+
 export interface CardApiRequestOptions {
   readonly fetchImpl?: typeof fetch;
   readonly signal?: AbortSignal;
