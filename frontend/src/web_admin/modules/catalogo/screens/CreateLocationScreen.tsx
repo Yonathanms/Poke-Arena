@@ -33,7 +33,7 @@ export function CreateLocationScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
+    <div className="min-h-screen bg-arena-bg text-slate-100 p-6">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold tracking-tight mb-6">Crear Ubicación</h1>
 
@@ -51,7 +51,7 @@ export function CreateLocationScreen() {
         ) : (
           <form
             onSubmit={handleSubmit}
-            className="rounded-xl border border-slate-800 bg-slate-900 p-6 flex flex-col gap-6"
+            className="rounded-xl border border-arena-border bg-arena-card p-6 flex flex-col gap-6"
           >
             <LocationForm values={formValues} onChange={setFormValues} disabled={loading} />
 
