@@ -24,6 +24,7 @@ from src.shared.http_module import problema, respuestas_documentadas
 from src.shared.validacion.cuerpo import CuerpoExcesivo, flujo_acotado
 
 from ..adapters.mongo_carta_repository import MongoCartaRepository
+from ..adapters.sql_inventario_adapter import SqlInventarioJugadorAdapter
 from ..domain.carta_model import DatosCarta
 from ..domain.imagen_model import MAX_IMAGE_BYTES
 from ..ports.cartas_ports import ErrorPersistencia
@@ -47,6 +48,7 @@ from .cartas_dtos import (
     TipoCarta,
     esquema_multipart,
 )
+from .cartas_validaciones import validar_parametros_busqueda
 
 _LIMITE_MULTIPART = MAX_IMAGE_BYTES + 16_384
 _PATRON_CLAVE = r"^[!-+\x2D-~]{1,128}$"  # ASCII visible, sin coma (headers combinados).
@@ -157,6 +159,7 @@ def crear_router(
     habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
     jugador: Callable[..., Awaitable[Any]] | None = None,
     miniatura: Callable[[str], Awaitable[bytes | None]] | None = None,
+    imagen_grande: Callable[[str], Awaitable[bytes | None]] | None = None,
 ) -> APIRouter:
     """Registra la creación y consulta de cartas con autorización de plataforma."""
     router = APIRouter(prefix="/content", tags=["Content Cards"])
@@ -188,6 +191,36 @@ def crear_router(
                 raise problema(404, "miniatura_no_encontrada", "Miniatura no encontrada.")
             return Response(
                 datos, media_type="image/webp",
+                headers={"Cache-Control": "private, max-age=300", "Vary": "Authorization"},
+            )
+
+    if imagen_grande is not None:
+        @router.get(
+            "/cards/{card_id}/image",
+            response_class=Response,
+            responses={
+                200: {
+                    "content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}},
+                },
+                **respuestas_documentadas({
+                    401: "Sesión requerida", 403: "Rol insuficiente",
+                    404: "Imagen no encontrada", 503: "Medios no disponibles",
+                }),
+            },
+        )
+        async def obtener_imagen(
+            card_id: Annotated[str, Path(min_length=1, max_length=36)],
+            _actor: Any = Depends(auth_jugador),
+        ) -> Response:
+            try:
+                datos = await imagen_grande(card_id)
+            except (ErrorPersistencia, ErrorImagen):
+                raise problema(503, "imagen_no_disponible", "Imagen no disponible.") from None
+            if datos is None:
+                raise problema(404, "imagen_no_encontrada", "Imagen no encontrada.")
+            media_type = "image/webp" if datos[:4] == b"RIFF" and datos[8:12] == b"WEBP" else "image/png"
+            return Response(
+                datos, media_type=media_type,
                 headers={"Cache-Control": "private, max-age=300", "Vary": "Authorization"},
             )
 
@@ -260,27 +293,38 @@ def crear_router(
         response_model=CartaSearchResponseDTO,
         status_code=status.HTTP_200_OK,
         summary="Buscar y filtrar cartas del catálogo",
-        description="Búsquedas rápidas optimizadas con MongoDB por texto, tipo y rareza.",
+        description="Búsquedas rápidas optimizadas con MongoDB por texto, tipo, rareza y costo.",
         responses=respuestas_documentadas(
             {401: "Sesión requerida", 422: "Filtros inválidos", 503: "Catálogo no disponible"}
         ),
     )
     async def buscar_cartas(
         q: Annotated[str | None, Query(description="Nombre, código o texto descriptivo")] = None,
-        tipo: Annotated[TipoCarta | None, Query(description="Tipo elemental")] = None,
-        rareza: Annotated[RarezaCarta | None, Query(description="Rareza de catálogo")] = None,
-        limite: Annotated[int, Query(ge=1, le=100, description="Cartas por página")] = 15,
-        pagina: Annotated[int, Query(ge=1, description="Número de página")] = 1,
+        tipo: Annotated[str | None, Query(description="Tipo elemental (ej. FUE, AGU, PLA)")] = None,
+        rareza: Annotated[str | None, Query(description="Rareza (ej. COMUN, RARA)")] = None,
+        costo: Annotated[int | None, Query(description="Costo de energía (0 a 10)")] = None,
+        solo_propias: Annotated[bool, Query(description="Filtrar solo cartas de la colección")] = False,
+        limite: Annotated[int | None, Query(description="Cartas por página (1 a 100)")] = 15,
+        pagina: Annotated[int | None, Query(description="Número de página (>= 1)")] = 1,
         _actor: Any = Depends(auth_jugador),
     ) -> CartaSearchResponseDTO:
+        limite_efectivo, pagina_efectiva, tipo_dto, rareza_dto = validar_parametros_busqueda(
+            pagina=pagina, limite=limite, tipo=tipo, costo=costo, rareza=rareza
+        )
+
+        user_id = getattr(_actor, "id", None)
         repo = MongoCartaRepository()
-        srv = CartasService(repository=repo)
+        inventario = SqlInventarioJugadorAdapter()
+        srv = CartasService(repository=repo, inventario=inventario)
         search_params = CartaSearchQueryDTO(
             q=q,
-            tipo=tipo,
-            rareza=rareza,
-            limite=limite,
-            pagina=pagina,
+            tipo=tipo_dto,
+            rareza=rareza_dto,
+            costo=costo,
+            solo_propias=solo_propias,
+            user_id=user_id,
+            limite=limite_efectivo,
+            pagina=pagina_efectiva,
         )
         try:
             return await srv.buscar_cartas(search_params)
@@ -300,10 +344,12 @@ def crear_router(
         identificador: str,
         _actor: Any = Depends(auth_jugador),
     ) -> CartaResponseDTO:
+        user_id = getattr(_actor, "id", None)
         repo = MongoCartaRepository()
-        srv = CartasService(repository=repo)
+        inventario = SqlInventarioJugadorAdapter()
+        srv = CartasService(repository=repo, inventario=inventario)
         try:
-            carta = await srv.obtener_detalle_carta(identificador)
+            carta = await srv.obtener_detalle_carta(identificador, user_id=user_id)
         except ErrorPersistencia:
             raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
         if not carta:

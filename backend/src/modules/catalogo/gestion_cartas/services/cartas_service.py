@@ -459,14 +459,48 @@ class CrearCarta:
 class CartasService:
     """Capa de lógica de negocio para operaciones de consulta y búsqueda sobre el catálogo."""
 
-    def __init__(self, repository: Any) -> None:
+    def __init__(self, repository: Any, inventario: Any | None = None) -> None:
         self._repository = repository
+        self._inventario = inventario
 
     async def buscar_cartas(self, params: Any) -> Any:
-        """Aplica validaciones de negocio en búsquedas y delega la consulta al repositorio."""
-        return await self._repository.buscar_cartas(params)
+        """Aplica filtros de catálogo y cruza posesión de inventario con PostgreSQL."""
+        from ..controllers.cartas_dtos import CartaSearchResponseDTO
 
-    async def obtener_detalle_carta(self, identificador: str) -> Any | None:
-        """Obtiene la ficha técnica de una carta por ID o Código."""
-        return await self._repository.obtener_por_id_o_codigo(identificador)
+        inventario_usuario: dict[str, int] = {}
+        if getattr(params, "user_id", None) and self._inventario is not None:
+            inventario_usuario = await self._inventario.obtener_cantidades_por_usuario(params.user_id)
+
+        # Filtro de solo cartas en colección
+        if getattr(params, "solo_propias", False):
+            if not getattr(params, "user_id", None) or not inventario_usuario:
+                return CartaSearchResponseDTO(
+                    items=[],
+                    total=0,
+                    pagina=params.pagina,
+                    limite=params.limite,
+                    total_paginas=1,
+                )
+            params = params.model_copy(update={"ids_filtro": list(inventario_usuario.keys())})
+
+        respuesta = await self._repository.buscar_cartas(params)
+
+        # Anotación de copias y propiedad
+        for item in respuesta.items:
+            copias = inventario_usuario.get(item.id, 0) or inventario_usuario.get(item.code, 0)
+            item.owned_copies = copias
+            item.is_owned = copias > 0
+
+        return respuesta
+
+    async def obtener_detalle_carta(self, identificador: str, user_id: str | None = None) -> Any | None:
+        """Obtiene la ficha técnica de una carta por ID o Código con estado de posesión."""
+        carta = await self._repository.obtener_por_id_o_codigo(identificador)
+        if carta is not None and user_id and self._inventario is not None:
+            inventario = await self._inventario.obtener_cantidades_por_usuario(user_id)
+            copias = inventario.get(carta.id, 0) or inventario.get(carta.code, 0)
+            carta.owned_copies = copias
+            carta.is_owned = copias > 0
+        return carta
+
 

@@ -161,17 +161,30 @@ class MongoCartaRepository(ICartaRepository):
 
     async def buscar_cartas(self, params: CartaSearchQueryDTO) -> CartaSearchResponseDTO:
         """Interseca filtros y obtiene la página y su total en la misma consulta."""
-        query: dict[str, Any] = {}
+        condiciones: list[dict[str, Any]] = []
         termino = (params.q or "").strip()
         if termino:
             patron = {"$regex": escape(termino), "$options": "i"}
-            query["$or"] = [
-                {campo: patron} for campo in ("name", "code", "description", "descripcion")
-            ]
+            condiciones.append({
+                "$or": [{campo: patron} for campo in ("name", "code", "description", "descripcion")]
+            })
         if params.tipo is not None:
-            query["card_type"] = params.tipo.value
+            tipo_val = params.tipo.value if hasattr(params.tipo, "value") else str(params.tipo)
+            condiciones.append({"card_type": tipo_val})
         if params.rareza is not None:
-            query["rarity"] = params.rareza.value
+            rareza_val = params.rareza.value if hasattr(params.rareza, "value") else str(params.rareza)
+            condiciones.append({"rarity": rareza_val})
+        if params.costo is not None:
+            condiciones.append({"cost": params.costo})
+        if params.ids_filtro is not None:
+            condiciones.append({
+                "$or": [
+                    {"_id": {"$in": params.ids_filtro}},
+                    {"id": {"$in": params.ids_filtro}},
+                ]
+            })
+
+        query = {"$and": condiciones} if len(condiciones) > 1 else (condiciones[0] if condiciones else {})
 
         pipeline: list[dict[str, Any]] = [{"$match": query}] if query else []
         pipeline.extend([
