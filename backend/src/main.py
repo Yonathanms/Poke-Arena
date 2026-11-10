@@ -17,7 +17,7 @@ from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_orig
 from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA
 from src.modules.catalogo.catalogo_module import router_cartas, router_ubicaciones
 from src.modules.identidad import identidad_module
-from src.modules.jugadores.jugadores_module import provisionar_google, router_paquete
+from src.modules.jugadores.jugadores_module import provisionar_google, router_coleccion, router_decks, router_paquete
 from src.shared.config import get_settings
 from src.shared.http_module import registrar_errores
 
@@ -97,7 +97,7 @@ def crear_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
         expose_headers=["X-Correlation-ID", "Retry-After"],
     )
@@ -106,6 +106,8 @@ def crear_app() -> FastAPI:
         identidad_module.crear_router_identidad(provisionar_google), prefix=settings.API_V1_PREFIX
     )
     app.include_router(router_paquete, prefix=settings.API_V1_PREFIX)
+    app.include_router(router_coleccion, prefix=settings.API_V1_PREFIX)
+    app.include_router(router_decks, prefix=settings.API_V1_PREFIX)
     app.include_router(
         router_cartas(
             identidad_module.requerir_administrador,
