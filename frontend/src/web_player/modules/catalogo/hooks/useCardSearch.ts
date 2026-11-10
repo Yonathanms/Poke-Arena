@@ -19,6 +19,8 @@ export interface UseCardSearchOptions extends CardApiRequestOptions {
   readonly initialQuery?: string;
   readonly initialType?: CardType | "ALL";
   readonly initialRarity?: CardRarity | "ALL";
+  readonly initialCost?: number | "ALL";
+  readonly initialOnlyOwned?: boolean;
   readonly pageSize?: number;
   readonly autoLoad?: boolean;
 }
@@ -45,6 +47,11 @@ export interface UseCardSearchResult {
   readonly setSelectedType: (type: CardType | "ALL") => void;
   readonly selectedRarity: CardRarity | "ALL";
   readonly setSelectedRarity: (rarity: CardRarity | "ALL") => void;
+  readonly selectedCost: number | "ALL";
+  readonly setSelectedCost: (cost: number | "ALL") => void;
+  readonly onlyOwned: boolean;
+  readonly setOnlyOwned: (onlyOwned: boolean) => void;
+  readonly resetFilters: () => void;
 }
 
 const DEFAULT_PAGE_SIZE = 15;
@@ -67,6 +74,12 @@ export function useCardSearch(
   const [selectedRarity, setSelectedRarityState] = useState<CardRarity | "ALL">(
     options.initialRarity ?? "ALL"
   );
+  const [selectedCost, setSelectedCostState] = useState<number | "ALL">(
+    options.initialCost ?? "ALL"
+  );
+  const [onlyOwned, setOnlyOwnedState] = useState<boolean>(
+    options.initialOnlyOwned ?? false
+  );
   const [currentPage, setCurrentPage] = useState(1);
 
   const [hasSearched, setHasSearched] = useState(false);
@@ -86,6 +99,8 @@ export function useCardSearch(
       queryText: string,
       typeFilter: CardType | "ALL",
       rarityFilter: CardRarity | "ALL",
+      costFilter: number | "ALL",
+      ownedOnly: boolean,
       page: number
     ) => {
       const currentRequestId = ++requestIdRef.current;
@@ -99,6 +114,8 @@ export function useCardSearch(
             q: queryText.trim().length > 0 ? queryText.trim() : null,
             tipo: typeFilter !== "ALL" ? typeFilter : null,
             rareza: rarityFilter !== "ALL" ? rarityFilter : null,
+            costo: costFilter !== "ALL" ? costFilter : null,
+            solo_propias: ownedOnly ? true : undefined,
             pagina: page,
             limite: pageSize,
           },
@@ -160,18 +177,27 @@ export function useCardSearch(
         e.preventDefault();
       }
       setCurrentPage(1);
-      void executeFetch(searchQuery, selectedType, selectedRarity, 1);
+      void executeFetch(searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned, 1);
     },
-    [executeFetch, searchQuery, selectedType, selectedRarity]
+    [executeFetch, searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned]
   );
 
   // Limpieza completa de filtros y búsqueda
   const handleClear = useCallback(() => {
     setSearchQuery("");
+    setCurrentPage(1);
+    void executeFetch("", selectedType, selectedRarity, selectedCost, onlyOwned, 1);
+  }, [executeFetch, selectedType, selectedRarity, selectedCost, onlyOwned]);
+
+  // Restablecer TODOS los filtros al estado inicial
+  const resetFilters = useCallback(() => {
+    setSearchQuery("");
     setSelectedTypeState("ALL");
     setSelectedRarityState("ALL");
+    setSelectedCostState("ALL");
+    setOnlyOwnedState(false);
     setCurrentPage(1);
-    void executeFetch("", "ALL", "ALL", 1);
+    void executeFetch("", "ALL", "ALL", "ALL", false, 1);
   }, [executeFetch]);
 
   // Selección de tipo reactiva: reinicia página a 1
@@ -179,9 +205,9 @@ export function useCardSearch(
     (type: CardType | "ALL") => {
       setSelectedTypeState(type);
       setCurrentPage(1);
-      void executeFetch(searchQuery, type, selectedRarity, 1);
+      void executeFetch(searchQuery, type, selectedRarity, selectedCost, onlyOwned, 1);
     },
-    [executeFetch, searchQuery, selectedRarity]
+    [executeFetch, searchQuery, selectedRarity, selectedCost, onlyOwned]
   );
 
   // Selección de rareza reactiva: reinicia página a 1
@@ -189,9 +215,29 @@ export function useCardSearch(
     (rarity: CardRarity | "ALL") => {
       setSelectedRarityState(rarity);
       setCurrentPage(1);
-      void executeFetch(searchQuery, selectedType, rarity, 1);
+      void executeFetch(searchQuery, selectedType, rarity, selectedCost, onlyOwned, 1);
     },
-    [executeFetch, searchQuery, selectedType]
+    [executeFetch, searchQuery, selectedType, selectedCost, onlyOwned]
+  );
+
+  // Selección de costo reactiva: reinicia página a 1
+  const setSelectedCost = useCallback(
+    (cost: number | "ALL") => {
+      setSelectedCostState(cost);
+      setCurrentPage(1);
+      void executeFetch(searchQuery, selectedType, selectedRarity, cost, onlyOwned, 1);
+    },
+    [executeFetch, searchQuery, selectedType, selectedRarity, onlyOwned]
+  );
+
+  // Toggle de solo propias reactivo: reinicia página a 1
+  const setOnlyOwned = useCallback(
+    (owned: boolean) => {
+      setOnlyOwnedState(owned);
+      setCurrentPage(1);
+      void executeFetch(searchQuery, selectedType, selectedRarity, selectedCost, owned, 1);
+    },
+    [executeFetch, searchQuery, selectedType, selectedRarity, selectedCost]
   );
 
   // Navegación de páginas
@@ -201,9 +247,9 @@ export function useCardSearch(
         return;
       }
       setCurrentPage(targetPage);
-      void executeFetch(searchQuery, selectedType, selectedRarity, targetPage);
+      void executeFetch(searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned, targetPage);
     },
-    [executeFetch, searchQuery, selectedType, selectedRarity, totalPages, currentPage]
+    [executeFetch, searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned, totalPages, currentPage]
   );
 
   const nextPage = useCallback(() => {
@@ -219,13 +265,13 @@ export function useCardSearch(
   }, [goToPage, currentPage]);
 
   const reload = useCallback(() => {
-    void executeFetch(searchQuery, selectedType, selectedRarity, currentPage);
-  }, [executeFetch, searchQuery, selectedType, selectedRarity, currentPage]);
+    void executeFetch(searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned, currentPage);
+  }, [executeFetch, searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned, currentPage]);
 
   // Carga inicial al montar si autoLoad está activo
   useEffect(() => {
     if (autoLoad) {
-      void executeFetch(searchQuery, selectedType, selectedRarity, 1);
+      void executeFetch(searchQuery, selectedType, selectedRarity, selectedCost, onlyOwned, 1);
     }
     // Solo al montar
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,5 +299,10 @@ export function useCardSearch(
     setSelectedType,
     selectedRarity,
     setSelectedRarity,
+    selectedCost,
+    setSelectedCost,
+    onlyOwned,
+    setOnlyOwned,
+    resetFilters,
   };
 }

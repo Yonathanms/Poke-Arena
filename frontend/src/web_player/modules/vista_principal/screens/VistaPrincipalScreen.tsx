@@ -7,12 +7,14 @@
  * 3. Proporcionar la acción de cierre de sesión coordinada con el store en memoria.
  */
 
-import React from "react";
+import React, { useState } from "react";
+import { User, BookOpen } from "lucide-react";
 import { ProfileHeader } from "../components/ProfileHeader";
 import { PlayerStatsGrid } from "../components/PlayerStatsGrid";
 import { DatabaseVerificationCard } from "../components/DatabaseVerificationCard";
 import { usePlayerProfile } from "../hooks/usePlayerProfile";
 import { AlertBanner } from "../../../../shared/components/AlertBanner";
+import { SearchCardsScreen } from "../../catalogo/screens/SearchCardsScreen";
 
 export interface VistaPrincipalScreenProps {
   readonly onLogout: () => void;
@@ -24,6 +26,7 @@ export function VistaPrincipalScreen({
   isLoggingOut = false,
 }: VistaPrincipalScreenProps): React.ReactElement {
   const { profile, isLoading, error, reload } = usePlayerProfile();
+  const [activeTab, setActiveTab] = useState<"perfil" | "catalogo">("perfil");
 
   if (isLoading) {
     return (
@@ -70,7 +73,7 @@ export function VistaPrincipalScreen({
 
   return (
     <div className="min-h-screen bg-arena-bg text-slate-100 p-4 sm:p-8">
-      <div className="max-w-4xl mx-auto flex flex-col gap-6">
+      <div className="max-w-5xl mx-auto flex flex-col gap-6">
         {/* Cabecera con datos de cuenta y logout */}
         <ProfileHeader
           profile={profile}
@@ -78,11 +81,54 @@ export function VistaPrincipalScreen({
           isLoggingOut={isLoggingOut}
         />
 
-        {/* Cuadrícula de estadísticas de juego */}
-        <PlayerStatsGrid profile={profile} />
+        {/* Navegación por pestañas del Jugador: Perfil vs Catálogo & Colección */}
+        <div className="flex items-center gap-2 border-b border-arena-border/60 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("perfil")}
+            data-testid="tab-player-profile"
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "perfil"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>Mi Perfil & Estadísticas</span>
+          </button>
 
-        {/* Tarjeta de verificación técnica contra PostgreSQL */}
-        <DatabaseVerificationCard profile={profile} />
+          <button
+            type="button"
+            onClick={() => setActiveTab("catalogo")}
+            data-testid="tab-player-catalog"
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "catalogo"
+                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Catálogo & Mi Colección</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-400/40 text-[10px] font-bold">
+              Explorar
+            </span>
+          </button>
+        </div>
+
+        {/* Vista activa según la pestaña seleccionada */}
+        {activeTab === "perfil" ? (
+          <div className="flex flex-col gap-6 animate-fade-in">
+            {/* Cuadrícula de estadísticas de juego */}
+            <PlayerStatsGrid profile={profile} />
+
+            {/* Tarjeta de verificación técnica contra PostgreSQL */}
+            <DatabaseVerificationCard profile={profile} />
+          </div>
+        ) : (
+          <div className="animate-fade-in">
+            <SearchCardsScreen mode="player" />
+          </div>
+        )}
       </div>
     </div>
   );

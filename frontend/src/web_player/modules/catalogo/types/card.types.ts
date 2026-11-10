@@ -16,12 +16,17 @@ export interface PokemonCard {
   price?: number | null;
   activo?: boolean;
   ability_code?: string | null;
+  ability_name?: string | null;
+  owned_copies: number;
+  is_owned?: boolean;
 }
 
 export interface SearchCardsParams {
   q?: string | null;
   tipo?: CardType | null;
   rareza?: CardRarity | null;
+  costo?: number | null;
+  solo_propias?: boolean;
   limite?: number;
   pagina?: number;
 }
