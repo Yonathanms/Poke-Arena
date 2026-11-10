@@ -371,6 +371,18 @@ def cmd_test(_args: argparse.Namespace) -> None:
     run_cmd([str(py), "-m", "pytest", "tests", "-v"], cwd=BACKEND_DIR)
 
 
+def cmd_dump_images(args: argparse.Namespace) -> None:
+    """Vuelca imágenes de cartas de MongoDB GridFS a disco usando el entorno virtual."""
+    py = get_backend_python()
+    script = ROOT_DIR / "resources" / "scripts" / "export_mongo_images.py"
+    cmd = [str(py), str(script)]
+    if getattr(args, "output_dir", None):
+        cmd.extend(["--output-dir", str(args.output_dir)])
+    if getattr(args, "bucket", None):
+        cmd.extend(["--bucket", str(args.bucket)])
+    run_cmd(cmd, cwd=ROOT_DIR)
+
+
 # ------------------------------------------------------------------------------
 # PARSER DE COMANDOS
 # ------------------------------------------------------------------------------
@@ -389,6 +401,7 @@ Comandos habituales:
   python manage.py dbs           # Inicia Postgres y MongoDB en Docker
   python manage.py dev-backend   # Corre la API FastAPI en local (:8000)
   python manage.py dev-frontend  # Corre React / Vite en local (:5173)
+  python manage.py dump-images   # Vuelca las imágenes de cartas de MongoDB GridFS a disco
   python manage.py lint          # Revisa estilo y tipos (Ruff + Mypy)
   python manage.py stop          # Detiene las bases de datos
   python manage.py clean         # Detiene y borra los datos de las bases de datos
@@ -414,6 +427,15 @@ Comandos habituales:
     sub.add_parser("dev-frontend", aliases=["frontend", "front"], help="Corre Vite local").set_defaults(func=cmd_dev_frontend)
     sub.add_parser("lint", help="Corre Ruff y Mypy").set_defaults(func=cmd_lint)
     sub.add_parser("test", help="Corre Pytest").set_defaults(func=cmd_test)
+
+    sub_dump = sub.add_parser(
+        "dump-images",
+        aliases=["volcado-imagenes", "export-images"],
+        help="Vuelca imágenes de cartas de MongoDB GridFS a resources/images_cartas_mongo",
+    )
+    sub_dump.add_argument("--output-dir", "-o", type=Path, default=None, help="Directorio destino personalizado")
+    sub_dump.add_argument("--bucket", "-b", type=str, default="card_assets", help="Bucket GridFS (default: card_assets)")
+    sub_dump.set_defaults(func=cmd_dump_images)
 
     args = parser.parse_args()
     if not args.command:

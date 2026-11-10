@@ -39,14 +39,15 @@ class MongoProyeccionCartas:
         db = coleccion.database
         if db.name in (MONGO_F5_BASE, MONGO_ORIGINAL[2]):
             from src.shared.config import get_settings
+            from src.database.mongodb.destinos_outbox import MONGO_F5_SERVIDORES
 
             cliente = db.client
-            servidores = cliente.topology_description.server_descriptions()
-            servidor = MONGO_F5_SERVIDOR if db.name == MONGO_F5_BASE else MONGO_ORIGINAL[:2]
+            servidores = set(cliente.topology_description.server_descriptions())
+            servidores_validos = MONGO_F5_SERVIDORES if db.name == MONGO_F5_BASE else {MONGO_ORIGINAL[:2]}
             valido = (
                 cliente.options.direct_connection is True
                 and cliente.get_default_database(default="_outbox_sin_base").name == db.name
-                and set(servidores) == {servidor}
+                and bool(servidores & servidores_validos)
                 and (db.name == MONGO_F5_BASE or get_settings().ORIGINAL_RUNTIME == "outbox")
             )
         else:

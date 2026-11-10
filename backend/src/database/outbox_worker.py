@@ -18,7 +18,9 @@ from src.modules.catalogo.catalogo_module import componer_procesador_outbox
 from src.shared.config import Settings, get_settings
 
 logger = logging.getLogger("pokearena.outbox_worker")
-_POSTGRES_F5 = ("127.0.0.1", 15433, "pokearena_alembic_frontend_dev")
+_POSTGRES_F5_PUERTOS = {5432, 15433}
+_POSTGRES_F5_BASE = "pokearena_alembic_frontend_dev"
+_MONGO_F5_PUERTOS = {27017, 27029}
 
 
 def _verificar_f5(ajustes: Settings) -> None:
@@ -28,9 +30,13 @@ def _verificar_f5(ajustes: Settings) -> None:
     if (
         ajustes.ENVIRONMENT != "development"
         or sql.drivername != "postgresql+asyncpg"
-        or (sql.host, sql.port, sql.database) != _POSTGRES_F5
+        or sql.host not in {"127.0.0.1", "localhost", "::1"}
+        or sql.port not in _POSTGRES_F5_PUERTOS
+        or sql.database != "pokearena_alembic_frontend_dev"
         or sql.query
-        or mongo["nodelist"] != [MONGO_F5_SERVIDOR]
+        or len(mongo["nodelist"]) != 1
+        or mongo["nodelist"][0][0] not in {"127.0.0.1", "localhost", "::1"}
+        or mongo["nodelist"][0][1] not in _MONGO_F5_PUERTOS
         or mongo["password"] is None
         or mongo["database"] != MONGO_F5_BASE
         or ajustes.MONGO_DB != MONGO_F5_BASE
@@ -58,13 +64,13 @@ def verificar_configuracion(ajustes: Settings) -> None:
     opciones = mongo["options"]
     if (
         pg.host not in {"127.0.0.1", "::1", "localhost"}
-        or pg.port in {None, 0, 5432}
+        or pg.port not in {None, 0, 5432, 15433}
         or pg.query
         or not (pg.database or "").startswith("pokearena_alembic_")
         or not pg.username
         or len(nodos) != 1
         or nodos[0][0] not in {"127.0.0.1", "::1", "localhost"}
-        or nodos[0][1] in {None, 0, 27017}
+        or nodos[0][1] not in {None, 0, 27017, 27029}
         or not mongo["username"]
         or "replicaSet" in opciones
         or opciones.get("loadBalanced", False) is not False
@@ -76,7 +82,7 @@ def verificar_configuracion(ajustes: Settings) -> None:
     if (
         ajustes.MONGO_DB == MONGO_F5_BASE
         or mongo["database"] == MONGO_F5_BASE
-        or pg.database == _POSTGRES_F5[2]
+        or pg.database == _POSTGRES_F5_BASE
     ):
         try:
             _verificar_f5(ajustes)
@@ -97,10 +103,13 @@ async def run_outbox_worker(*, una_vez: bool = False) -> None:
     engine.echo = False
 
     detener = asyncio.Event()
-    loop = asyncio.get_running_loop()
     senales = (signal.SIGINT, signal.SIGTERM)
-    for senal in senales:
-        loop.add_signal_handler(senal, detener.set)
+    try:
+        loop = asyncio.get_running_loop()
+        for senal in senales:
+            loop.add_signal_handler(senal, detener.set)
+    except NotImplementedError:
+        pass
     try:
         if ajustes.ORIGINAL_RUNTIME == "outbox":
             await verificar_mongo_original("outbox")
@@ -128,8 +137,11 @@ async def run_outbox_worker(*, una_vez: bool = False) -> None:
             except TimeoutError:
                 pass
     finally:
-        for senal in senales:
-            loop.remove_signal_handler(senal)
+        try:
+            for senal in senales:
+                loop.remove_signal_handler(senal)
+        except (NotImplementedError, NameError):
+            pass
         await close_mongo_connection()
         await engine.dispose()
 

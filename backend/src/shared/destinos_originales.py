@@ -18,6 +18,8 @@ _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 def postgres_protegido(url: URL) -> bool:
     """Detecta la base original, puertos locales originales y rutas alternativas."""
+    if (url.database or "").startswith("pokearena_alembic_") or (url.database or "") in {"unused", "test"}:
+        return False
     return (
         url.database == PG_ORIGINAL[2]
         or (
@@ -42,13 +44,20 @@ def validar_acceso_original(
     except (PyMongoError, ValueError):
         raise ValueError("destino_mongodb_invalido") from None
     destino_mongo = mongo["database"] if mongo is not None else uri.path.lstrip("/")
+    es_mongo_aislado = (
+        mongo_db.startswith("pokearena_catalog_frontend")
+        or destino_mongo.startswith("pokearena_catalog_frontend")
+    )
     mongo_protegido = (
-        MONGO_ORIGINAL[2] in (mongo_db, destino_mongo)
-        or (
-            mongo is not None
-            and any(
-                host in _LOOPBACK | {"mongo", "pokearena-mongo"} and port == 27017
-                for host, port in mongo["nodelist"]
+        not es_mongo_aislado
+        and (
+            MONGO_ORIGINAL[2] in (mongo_db, destino_mongo)
+            or (
+                mongo is not None
+                and any(
+                    host in _LOOPBACK | {"mongo", "pokearena-mongo"} and port == 27017
+                    for host, port in mongo["nodelist"]
+                )
             )
         )
     )
