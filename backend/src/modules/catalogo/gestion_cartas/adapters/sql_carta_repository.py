@@ -107,6 +107,21 @@ class SqlCartaRepository(CartasRepositoryPort):
         except DBAPIError as error:
             raise _traducir_error(error) from None
 
+    async def buscar_referencia_original(self, carta_id: str) -> str | None:
+        """Lee únicamente la referencia original de la carta solicitada."""
+        self._exigir_transaccion()
+        try:
+            return await self._session.scalar(
+                select(ImagenCartaORM.original_storage_key)
+                .join(CartaORM, CartaORM.image_id == ImagenCartaORM.id)
+                .where(
+                    CartaORM.id == carta_id,
+                    ImagenCartaORM.state == "READY",
+                )
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
+
     async def buscar_habilidad_por_codigo(self, codigo: str) -> Habilidad | None:
         """Lee habilidad y copia JSON para no filtrar estado mutable del ORM."""
         self._exigir_transaccion()

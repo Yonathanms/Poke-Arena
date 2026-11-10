@@ -74,3 +74,12 @@ class ICartaRepository(ABC):
     async def obtener_por_id_o_codigo(self, identificador: str) -> object | None:
         """Obtiene una carta específica por su UUID o código único."""
         raise NotImplementedError
+
+
+class IInventarioJugadorPort(ABC):
+    """Puerto de persistencia para consultar el inventario de cartas del jugador (player_cards)."""
+
+    @abstractmethod
+    async def obtener_cantidades_por_usuario(self, user_id: str) -> dict[str, int]:
+        """Devuelve un mapa {card_id: quantity} con las cartas que posee el jugador."""
+        raise NotImplementedError

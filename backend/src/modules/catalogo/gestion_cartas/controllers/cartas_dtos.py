@@ -120,16 +120,27 @@ class CartaResponseDTO(BaseModel):
     price: float | None = None
     activo: bool = True
     ability_code: str | None = None
+    ability_name: str | None = Field(default=None, validation_alias=AliasChoices("ability_name", "nombre_habilidad"))
+    owned_copies: int = Field(default=0, validation_alias=AliasChoices("owned_copies", "copias_poseidas"), ge=0)
+    is_owned: bool = Field(default=False, validation_alias=AliasChoices("is_owned", "poseida"))
 
     @model_validator(mode="before")
     @classmethod
     def leer_habilidad_historica(cls, data: Any) -> Any:
         """Normaliza la proyección antigua sin alterar el documento de origen."""
-        if isinstance(data, dict) and data.get("ability_code") is None:
-            ability = data.get("ability")
-            code = ability.get("code") if isinstance(ability, dict) else None
-            if isinstance(code, str) and fullmatch(r"HAB-[0-9]{3}", code):
-                return {**data, "ability_code": code}
+        if isinstance(data, dict):
+            copia = dict(data)
+            carta_id = copia.get("id") or copia.get("_id")
+            if carta_id and not copia.get("thumbnailUrl") and not copia.get("imagen_miniatura_url"):
+                copia["thumbnailUrl"] = f"/api/v1/content/cards/{carta_id}/thumbnail"
+            if carta_id and not copia.get("imageUrl") and not copia.get("imagen_url"):
+                copia["imageUrl"] = f"/api/v1/content/cards/{carta_id}/image"
+            if copia.get("ability_code") is None:
+                ability = copia.get("ability")
+                code = ability.get("code") if isinstance(ability, dict) else None
+                if isinstance(code, str) and fullmatch(r"HAB-[0-9]{3}", code):
+                    copia["ability_code"] = code
+            return copia
         return data
 
     model_config = ConfigDict(
@@ -160,6 +171,10 @@ class CartaSearchQueryDTO(BaseModel):
     q: str | None = Field(default=None, description="Término de búsqueda por nombre, código o descripción")
     tipo: TipoCarta | None = Field(default=None, description="Filtro opcional por tipo elemental")
     rareza: RarezaCarta | None = Field(default=None, description="Filtro opcional por rareza")
+    costo: int | None = Field(default=None, ge=0, le=10, description="Filtro opcional por costo de energía (0 a 10)")
+    solo_propias: bool = Field(default=False, description="Filtra solo las cartas en la colección del jugador")
+    user_id: str | None = Field(default=None, description="ID del jugador solicitante para cotejar inventario")
+    ids_filtro: list[str] | None = Field(default=None, description="Lista opcional de IDs permitidos para el filtro solo_propias")
     limite: int = Field(default=15, ge=1, le=100, description="Cantidad máxima de cartas (defecto 15 para 3x5)")
     pagina: int = Field(default=1, ge=1, description="Número de página para paginado")
 

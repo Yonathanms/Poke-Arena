@@ -80,7 +80,28 @@ def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     return modulo.crear_router(
         administrador, crear_servicio_crear_carta, listar_habilidades,
         jugador=jugador, miniatura=recuperar_miniatura_carta,
+        imagen_grande=recuperar_imagen_carta,
     )
+
+
+async def recuperar_imagen_carta(carta_id: str) -> bytes | None:
+    """Compone la consulta SQL y la lectura del bucket compartido para la imagen original."""
+    from src.database.postgresql.connection import transactional_session
+
+    async def buscar_referencia(identificador: str) -> str | None:
+        async with transactional_session() as sesion:
+            repo = crear_repositorio_cartas(sesion)
+            referencia: str | None = await repo.buscar_referencia_original(identificador)
+            return referencia
+
+    referencia = await buscar_referencia(carta_id)
+    if referencia is None:
+        return None
+    try:
+        almacen = crear_almacen_imagenes()
+        return await almacen.recuperar(referencia)
+    except Exception:
+        return None
 
 
 async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:

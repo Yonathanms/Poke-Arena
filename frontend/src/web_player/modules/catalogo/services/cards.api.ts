@@ -37,6 +37,19 @@ export async function fetchCardThumbnail(id: string, signal: AbortSignal): Promi
   return data;
 }
 
+export async function fetchCardImage(id: string, signal: AbortSignal): Promise<Blob> {
+  ensureAuthHttpBridgeConfigured();
+  const { data } = await requestApiWithMeta<Blob>(
+    `${CARDS_ENDPOINT}/${encodeURIComponent(id)}/image`,
+    { signal, headers: { Accept: "image/webp, image/png, */*" } },
+    (response) => response.blob(),
+  );
+  if (data.size === 0) {
+    throw new Error("La imagen recibida no es válida.");
+  }
+  return data;
+}
+
 export interface CardApiRequestOptions {
   readonly fetchImpl?: typeof fetch;
   readonly signal?: AbortSignal;
@@ -101,6 +114,26 @@ function normalizePokemonCard(item: unknown): PokemonCard {
     price: typeof raw.price === "number" ? raw.price : null,
     activo: typeof raw.activo === "boolean" ? raw.activo : true,
     ability_code: typeof raw.ability_code === "string" ? raw.ability_code : null,
+    ability_name:
+      typeof raw.ability_name === "string"
+        ? raw.ability_name
+        : typeof raw.ability === "object" && raw.ability && "name" in raw.ability
+        ? String((raw.ability as Record<string, unknown>).name)
+        : null,
+    owned_copies:
+      typeof raw.owned_copies === "number"
+        ? raw.owned_copies
+        : typeof raw.copias === "number"
+        ? raw.copias
+        : raw.is_owned
+        ? 1
+        : 0,
+    is_owned:
+      typeof raw.is_owned === "boolean"
+        ? raw.is_owned
+        : typeof raw.owned_copies === "number"
+        ? raw.owned_copies > 0
+        : false,
   };
 }
 
@@ -113,7 +146,7 @@ export async function searchCards(
 ): Promise<ApiResponse<SearchCardsResponse>> {
   ensureAuthHttpBridgeConfigured();
 
-  const query: Record<string, string | number> = {
+  const query: Record<string, string | number | boolean> = {
     limite: Math.max(1, Math.min(100, params.limite ?? 15)),
     pagina: Math.max(1, params.pagina ?? 1),
   };
@@ -133,6 +166,14 @@ export async function searchCards(
     query.rareza = params.rareza;
   }
 
+  if (params.costo !== undefined && params.costo !== null && params.costo >= 0) {
+    query.costo = params.costo;
+  }
+
+  if (params.solo_propias) {
+    query.solo_propias = true;
+  }
+
   const searchParams = new URLSearchParams();
   searchParams.set("limite", String(query.limite));
   searchParams.set("pagina", String(query.pagina));
@@ -144,6 +185,12 @@ export async function searchCards(
   }
   if (query.rareza) {
     searchParams.set("rareza", String(query.rareza));
+  }
+  if (query.costo !== undefined) {
+    searchParams.set("costo", String(query.costo));
+  }
+  if (query.solo_propias) {
+    searchParams.set("solo_propias", "true");
   }
 
   const endpoint = `${CARDS_ENDPOINT}?${searchParams.toString()}`;

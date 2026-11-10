@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Zap, Sparkles, ShoppingBag } from 'lucide-react';
+import { Shield, Zap, Sparkles, Flame, CheckCircle, Lock } from 'lucide-react';
 import { PokemonCard, CardType, CardRarity } from '../../types/card.types';
 import { useCardThumbnail } from '../../hooks/useCardThumbnail';
 
@@ -62,84 +62,147 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onSelect }) => {
   const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
   const typeConfig = TYPE_CONFIG[card.type] || DEFAULT_TYPE_CONFIG;
   const rarityConfig = RARITY_BADGE[card.rarity] || RARITY_BADGE.COMUN;
+  const isOwned = (card.owned_copies ?? 0) > 0;
+
+  const handleClick = () => {
+    if (!isOwned) return;
+    onSelect?.(card);
+  };
 
   return (
     <div
-      onClick={() => onSelect?.(card)}
-      className={`group relative flex flex-col bg-arena-card border border-arena-border hover:border-blue-500/60 rounded-2xl p-3 transition-all duration-300 hover:-translate-y-1.5 shadow-lg hover:shadow-2xl ${typeConfig.glowClass} cursor-pointer overflow-hidden`}
+      onClick={handleClick}
+      data-testid={`card-item-${card.code}`}
+      aria-disabled={!isOwned}
+      title={!isOwned ? `${card.name} (No adquirida - Bloqueada)` : `Ver detalle de ${card.name}`}
+      className={`group relative flex flex-col rounded-2xl p-3 transition-all duration-300 overflow-hidden ${isOwned
+          ? `bg-arena-card border border-arena-border hover:border-blue-500/70 cursor-pointer hover:-translate-y-1.5 shadow-lg hover:shadow-2xl ${typeConfig.glowClass}`
+          : 'bg-slate-950/70 border border-slate-800/80 grayscale contrast-75 brightness-75 opacity-60 cursor-not-allowed select-none shadow-none'
+        }`}
     >
       {/* Relación de aspecto 5:7 para la imagen oficial */}
-      <div className="relative aspect-[5/7] w-full bg-slate-900 rounded-xl overflow-hidden border border-arena-border/50 flex items-center justify-center">
-        {thumbnail && thumbnail !== failedThumbnail ? (
-          <img
-            src={thumbnail}
-            alt={card.name}
-            onError={() => setFailedThumbnail(thumbnail)}
-            className="w-full h-full object-contain p-1 transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center p-4 text-center">
-            <Sparkles className="w-8 h-8 text-slate-500 mb-2" />
-            <span className="text-xs text-slate-400 font-semibold">{card.name}</span>
-            <span className="text-[10px] text-slate-500">{card.code}</span>
-          </div>
-        )}
-
-        {/* Insignia de Costo de Energía */}
-        <div className="absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded-full bg-slate-950/80 border border-amber-400/60 shadow-md backdrop-blur-sm">
-          <span className="text-xs font-black text-amber-300">{card.cost}</span>
-        </div>
-
-        {/* Insignia de Tipo */}
         <div
-          className={`absolute top-2 right-2 px-2 py-0.5 rounded-full border text-[10px] font-bold backdrop-blur-sm ${typeConfig.badgeClass}`}
+          className={`relative aspect-[5/7] w-full rounded-xl overflow-hidden border flex items-center justify-center ${isOwned
+              ? 'bg-slate-900 border-arena-border/50'
+              : 'bg-slate-950 border-slate-800/80 grayscale'
+            }`}
         >
-          {typeConfig.label}
-        </div>
-      </div>
+          {thumbnail && thumbnail !== failedThumbnail ? (
+            <img
+              src={thumbnail}
+              alt={card.name}
+              onError={() => setFailedThumbnail(thumbnail)}
+              className={`w-full h-full object-contain p-1 transition-transform duration-300 ${isOwned ? 'group-hover:scale-105' : 'grayscale'
+                }`}
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center p-4 text-center">
+              <Sparkles className="w-8 h-8 text-slate-500 mb-2" />
+              <span className="text-xs text-slate-400 font-semibold">{card.name}</span>
+              <span className="text-[10px] text-slate-500">{card.code}</span>
+            </div>
+          )}
 
-      {/* Metadatos y stats de la carta */}
-      <div className="mt-2.5 flex flex-col flex-1 justify-between">
-        <div>
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[10px] font-mono text-slate-400 tracking-wider">
-              {card.code}
-            </span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded border ${rarityConfig.class}`}
-            >
-              {rarityConfig.label}
-            </span>
+          {/* Insignia de Costo de Energía */}
+          <div
+            className={`absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded-full border shadow-md backdrop-blur-sm ${isOwned
+                ? 'bg-slate-950/85 border-amber-400/80 text-amber-300'
+                : 'bg-slate-950/90 border-slate-700 text-slate-400'
+              }`}
+            title={`Costo de energía: ${card.cost}`}
+          >
+            <span className="text-xs font-black">{card.cost}</span>
           </div>
-          <h4 className="text-sm font-bold text-slate-100 truncate mt-0.5 group-hover:text-blue-400 transition-colors">
-            {card.name}
-          </h4>
+
+          {/* Insignia de Tipo */}
+          <div
+            className={`absolute top-2 right-2 px-2 py-0.5 rounded-full border text-[10px] font-bold backdrop-blur-sm ${isOwned ? typeConfig.badgeClass : 'bg-slate-800/80 text-slate-400 border-slate-700'
+              }`}
+          >
+            {typeConfig.label}
+          </div>
+
+          {/* Insignia de Pertenencia / Copias en Colección */}
+          <div className="absolute bottom-2 right-2 backdrop-blur-sm">
+            {isOwned ? (
+              <span
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider bg-emerald-950/80 border border-emerald-400/60 text-emerald-300 shadow-md"
+                title={`Posees ${card.owned_copies} copia(s) de esta carta`}
+              >
+                <CheckCircle className="w-3 h-3 text-emerald-400" />
+                <span>x{card.owned_copies}</span>
+              </span>
+            ) : (
+              <span
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-950/90 border border-slate-800 text-slate-400 shadow-md"
+                title="Aún no posees esta carta en tu colección (bloqueada)"
+              >
+                <Lock className="w-3 h-3 text-slate-400" />
+                <span>x0</span>
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Atributos: Poder & Vida */}
-        <div className="mt-2 pt-2 border-t border-arena-border/50 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1 text-red-400 font-medium">
-            <Zap className="w-3.5 h-3.5 fill-red-400/20" />
-            <span>{card.power} ATK</span>
-          </div>
-          <div className="flex items-center gap-1 text-emerald-400 font-medium">
-            <Shield className="w-3.5 h-3.5 fill-emerald-400/20" />
-            <span>{card.hp} HP</span>
-          </div>
-        </div>
+        {/* Metadatos y stats de la carta */}
+        <div className="mt-2.5 flex flex-col flex-1 justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-mono text-slate-400 tracking-wider">
+                {card.code}
+              </span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded border ${rarityConfig.class}`}
+              >
+                {rarityConfig.label}
+              </span>
+            </div>
+              <h4
+                className={`text-sm font-bold truncate mt-0.5 transition-colors ${isOwned ? 'text-slate-100 group-hover:text-blue-400' : 'text-slate-400'
+                  }`}
+              >
+                {card.name}
+              </h4>
 
-        {/* Precio o acción de tienda si está disponible */}
-        {card.price !== undefined && card.price !== null && (
-          <div className="mt-2 flex items-center justify-between pt-1">
-            <span className="text-xs text-slate-400">Precio tienda</span>
-            <div className="flex items-center gap-1 text-amber-300 font-bold text-xs">
-              <ShoppingBag className="w-3 h-3" />
-              <span>${card.price.toFixed(2)}</span>
+              {/* Habilidad de la carta */}
+              {(card.ability_name || card.ability_code) && (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-indigo-300/90 truncate">
+                  <Flame className="w-3 h-3 text-indigo-400 shrink-0" />
+                  <span className="truncate font-medium">
+                    {card.ability_name || card.ability_code}
+                  </span>
+                </div>
+              )}
+          </div>
+
+          {/* Atributos: Poder & Vida */}
+          <div className="mt-2 pt-2 border-t border-arena-border/50 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1 text-red-400 font-medium">
+              <Zap className="w-3.5 h-3.5 fill-red-400/20" />
+              <span>{card.power} ATK</span>
+            </div>
+            <div className="flex items-center gap-1 text-emerald-400 font-medium">
+              <Shield className="w-3.5 h-3.5 fill-emerald-400/20" />
+              <span>{card.hp} HP</span>
             </div>
           </div>
-        )}
+
+          {/* Indicador de posesión descriptivo al pie */}
+          <div className="mt-2 pt-1 border-t border-arena-border/30 flex items-center justify-between text-[11px]">
+            <span className="text-slate-400 font-medium">Estado:</span>
+            {isOwned ? (
+              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                En colección ({card.owned_copies})
+              </span>
+            ) : (
+                <span className="text-slate-400 font-medium flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-slate-400" />
+                  <span>No adquirida</span>
+                </span>
+          )}
+              </div>
       </div>
-    </div>
-  );
+        </div>
+        );
 };
