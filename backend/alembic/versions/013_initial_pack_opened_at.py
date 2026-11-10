@@ -16,7 +16,9 @@ def upgrade() -> None:
     """Conserva los premios históricos y deja la apertura pendiente."""
     op.add_column(_TABLA, sa.Column("initial_pack_opened_at", sa.DateTime(timezone=True)))
     op.create_check_constraint(
-        _CHECK, _TABLA, "initial_pack_opened_at IS NULL OR has_received_initial_collection"
+        "ck_player_profiles_initial_pack_opened",
+        _TABLA,
+        "initial_pack_opened_at IS NULL OR has_received_initial_collection",
     )
 
 

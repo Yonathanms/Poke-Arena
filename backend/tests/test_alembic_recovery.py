@@ -43,11 +43,17 @@ def test_chain_has_one_base_one_head_and_no_duplicate_revisions() -> None:
         "revision": "011_locations_full", "down_revision": "1g_local_master_admin",
     }, {
         "revision": "012_player_profiles_inventory", "down_revision": "011_locations_full",
+    }, {
+        "revision": "013_initial_pack_opened_at", "down_revision": "012_player_profiles_inventory",
+    }, {
+        "revision": "014_identity_account_immutable", "down_revision": "013_initial_pack_opened_at",
+    }, {
+        "revision": "015_player_decks", "down_revision": "014_identity_account_immutable",
     }]
     assert len({r.revision for r in revisions}) == len(revisions) == len(expected)
     assert [r.revision for r in revisions] == [e["revision"] for e in expected]
     assert [r.down_revision for r in revisions] == [e["down_revision"] for e in expected]
-    assert script.get_heads() == ["012_player_profiles_inventory"]
+    assert script.get_heads() == ["015_player_decks"]
     assert script.get_bases() == ["001_initial_schema"]
     assert not list((BACKEND / "alembic/versions").glob("009*.py"))
 

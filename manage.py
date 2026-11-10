@@ -82,6 +82,14 @@ BEGIN
       GRANT UPDATE (initial_pack_opened_at) ON public.player_profiles TO poke_api_user;
     END IF;
   END IF;
+  IF EXISTS (
+    SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'player_decks'
+  ) THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.player_decks, public.player_deck_cards TO orm_media_test;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+      GRANT SELECT, INSERT, UPDATE, DELETE ON public.player_decks, public.player_deck_cards TO poke_api_user;
+    END IF;
+  END IF;
 END $$;
 """
 

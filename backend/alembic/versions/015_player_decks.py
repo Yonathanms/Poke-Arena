@@ -61,8 +61,21 @@ def upgrade() -> None:
     )
     op.create_index("ix_player_deck_cards_deck_id", "player_deck_cards", ["deck_id"])
 
-    op.execute("GRANT SELECT, INSERT ON player_decks TO poke_api_user")
-    op.execute("GRANT SELECT, INSERT ON player_deck_cards TO poke_api_user")
+    op.execute("""
+        DO $$
+        DECLARE rol_aplicacion name;
+        BEGIN
+            FOR rol_aplicacion IN
+                SELECT rolname FROM pg_roles WHERE rolname IN ('orm_media_test', 'poke_api_user')
+            LOOP
+                EXECUTE format(
+                    'GRANT SELECT, INSERT, UPDATE, DELETE ON public.player_decks, public.player_deck_cards TO %I',
+                    rol_aplicacion
+                );
+            END LOOP;
+        END;
+        $$;
+    """)
 
 
 def downgrade() -> None:
