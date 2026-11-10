@@ -118,3 +118,6 @@ prueba/
 **/.env
 **/.env.*
 !**/.env.example
+
+
+/resources/images_cartas_mongo

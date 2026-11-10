@@ -20,6 +20,7 @@ import { InitialPackOnboardingScreen } from "./web_player/modules/coleccion_inic
 import { CreateCardScreen } from "./web_admin/modules/catalogo/screens/CreateCardScreen";
 import { CreateLocationScreen } from "./web_admin/modules/catalogo/screens/CreateLocationScreen";
 import { SearchCardsScreen } from "./web_player/modules/catalogo/screens/SearchCardsScreen";
+import { VistaPrincipalScreen } from "./web_player/modules/vista_principal/screens/VistaPrincipalScreen";
 import { AdminLayout } from "./web_admin/shared/AdminLayout";
 
 export interface AppProps {
@@ -39,8 +40,8 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
     logout,
   } = useAdminSession();
 
-  // Subpestaña del panel administrativo: "cartas" | "ubicaciones" | "buscador"
-  const [adminTab, setAdminTab] = useState<"cartas" | "ubicaciones" | "buscador">("cartas");
+  // Subpestaña del panel administrativo: "cartas" | "ubicaciones" | "buscador" | "jugador"
+  const [adminTab, setAdminTab] = useState<"cartas" | "ubicaciones" | "buscador" | "jugador">("cartas");
 
   // Recuerda si hubo una sesión administrativa en el ciclo actual para preservar borradores
   const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
@@ -82,7 +83,7 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
 
   // ---------------------------------------------------------------------------
   // 3. USUARIO ADMINISTRADOR (PLATFORM_ADMIN):
-  //    Exclusivamente portal administrativo (Crear Carta, Crear Ubicación, Buscar Cartas)
+  //    Panel administrativo con acceso completo a Catálogo y vista de Jugador / Cubos
   // ---------------------------------------------------------------------------
   const preserveWorkspaceInBackground =
     !isAdminAuthenticated &&
@@ -95,6 +96,11 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
       <CreateLocationScreen />
     ) : adminTab === "buscador" ? (
       <SearchCardsScreen />
+    ) : adminTab === "jugador" ? (
+      <VistaPrincipalScreen
+        onLogout={logout}
+        isLoggingOut={isLoggingOut}
+      />
     ) : (
       <CreateCardScreen />
     ));
@@ -107,8 +113,8 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
         isLoggingOut={isLoggingOut}
         onLogout={logout}
       >
-        <div className="mb-4 flex items-center justify-between border-b border-arena-border pb-3">
-          <div className="flex items-center gap-2">
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-arena-border pb-3">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setAdminTab("cartas")}
@@ -141,6 +147,20 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
               }`}
             >
               Buscar Cartas
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminTab("jugador")}
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                adminTab === "jugador"
+                  ? "bg-blue-600 text-white shadow"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              <span>Mi Perfil de Jugador</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px]">
+                Cubos & ELO
+              </span>
             </button>
           </div>
           <div className="text-xs text-slate-400 font-medium">
