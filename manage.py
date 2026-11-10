@@ -323,10 +323,47 @@ def cmd_stop(_args: argparse.Namespace) -> None:
     run_cmd(["docker", "compose", "down"])
 
 
-def cmd_clean(_args: argparse.Namespace) -> None:
-    """Detiene los contenedores y BORRA los datos (Reset de bases de datos)."""
-    print("\n[Docker] [RESET] Borrando contenedores y volúmenes de datos...")
-    run_cmd(["docker", "compose", "down", "-v"])
+def cmd_clean(args: argparse.Namespace) -> None:
+    """Detiene los contenedores y borra completamente todos los volúmenes y datos persistentes."""
+    print("=" * 65)
+    print("  PELIGRO: REINICIO Y BORRADO TOTAL DE BASES DE DATOS")
+    print("=" * 65)
+    print("  Esta operación eliminará permanentemente:")
+    print("  • Todas las tablas, roles y datos de PostgreSQL (pokearena_pgmaster_data)")
+    print("  • Todas las colecciones e imágenes GridFS de MongoDB (pokearena_mongo_data)")
+    print("  • Toda la configuración interna de MongoDB (pokearena_mongo_config_data)")
+    print("-" * 65)
+
+    force = getattr(args, "force", False)
+    if not force:
+        try:
+            respuesta = input("Para confirmar la eliminación total, escriba 'confirmar': ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n[Operación Cancelada] No se realizó ningún cambio.")
+            return
+
+        if respuesta.lower() != "confirmar":
+            print(f"\n[Operación Cancelada] Entrada '{respuesta}' no coincide con 'confirmar'. No se borró nada.")
+            return
+
+    print("\n[1/3] Deteniendo y removiendo contenedores Docker...")
+    run_quiet(["docker", "compose", "down", "-v", "--remove-orphans"])
+
+    print("\n[2/3] Eliminando volúmenes de datos persistentes...")
+    vols = ["pokearena_pgmaster_data", "pokearena_mongo_data", "pokearena_mongo_config_data"]
+    for v in vols:
+        code, _, err = run_quiet(["docker", "volume", "rm", v])
+        if code == 0:
+            print(f"  ✓ Volumen persistente '{v}' eliminado.")
+        else:
+            print(f"  - Volumen '{v}' no existía o ya estaba limpio.")
+
+    print("\n[3/3] Limpieza completa finalizada exitosamente.")
+    print("=" * 65)
+    print("  Las bases de datos han sido eliminadas por completo.")
+    print("  Para volver a crearlas desde cero con esquemas, roles y administrador:")
+    print("    python manage.py setup-dev")
+    print("=" * 65)
 
 
 def cmd_status(_args: argparse.Namespace) -> None:
@@ -383,6 +420,20 @@ def cmd_dump_images(args: argparse.Namespace) -> None:
     run_cmd(cmd, cwd=ROOT_DIR)
 
 
+def cmd_generar_cartas(args: argparse.Namespace) -> None:
+    """Ensambla arte 5:7 e inyecta N cartas aleatorias en PostgreSQL, GridFS y MongoDB."""
+    py = get_backend_python()
+    script = ROOT_DIR / "resources" / "scripts" / "generar_cartas.py"
+    cmd = [str(py), str(script)]
+    if getattr(args, "cantidad", None) is not None:
+        cmd.append(str(args.cantidad))
+    if getattr(args, "seed", None) is not None:
+        cmd.extend(["--seed", str(args.seed)])
+    if getattr(args, "preview_dir", None) is not None:
+        cmd.extend(["--preview-dir", str(args.preview_dir)])
+    run_cmd(cmd, cwd=ROOT_DIR)
+
+
 # ------------------------------------------------------------------------------
 # PARSER DE COMANDOS
 # ------------------------------------------------------------------------------
@@ -395,16 +446,17 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Comandos habituales:
-  python manage.py install       # Configura .env e instala dependencias (Python + Node.js)
-  python manage.py setup-dev     # Inicia Docker, corre Alembic, configura usuarios e indexa Mongo
-  python manage.py migrate       # Aplica migraciones pendientes con Alembic y actualiza permisos
-  python manage.py dbs           # Inicia Postgres y MongoDB en Docker
-  python manage.py dev-backend   # Corre la API FastAPI en local (:8000)
-  python manage.py dev-frontend  # Corre React / Vite en local (:5173)
-  python manage.py dump-images   # Vuelca las imágenes de cartas de MongoDB GridFS a disco
-  python manage.py lint          # Revisa estilo y tipos (Ruff + Mypy)
-  python manage.py stop          # Detiene las bases de datos
-  python manage.py clean         # Detiene y borra los datos de las bases de datos
+  python manage.py install            # Configura .env e instala dependencias (Python + Node.js)
+  python manage.py setup-dev          # Inicia Docker, corre Alembic, configura usuarios e indexa Mongo
+  python manage.py migrate            # Aplica migraciones pendientes con Alembic y actualiza permisos
+  python manage.py dbs                # Inicia Postgres y MongoDB en Docker
+  python manage.py dev-backend        # Corre la API FastAPI en local (:8000)
+  python manage.py dev-frontend       # Corre React / Vite en local (:5173)
+  python manage.py generar_cartas 25  # Ensambla arte 5:7 e inyecta N cartas en la base de datos
+  python manage.py dump-images        # Vuelca las imágenes de cartas de MongoDB GridFS a disco
+  python manage.py lint               # Revisa estilo y tipos (Ruff + Mypy)
+  python manage.py stop               # Detiene las bases de datos
+  python manage.py clean              # Detiene y borra los datos de las bases de datos
         """,
     )
 
@@ -421,7 +473,15 @@ Comandos habituales:
     sub.add_parser("migrate", aliases=["alembic", "db-upgrade"], help="Aplica migraciones pendientes con Alembic").set_defaults(func=cmd_migrate)
 
     sub.add_parser("stop", aliases=["down"], help="Detiene bases de datos").set_defaults(func=cmd_stop)
-    sub.add_parser("clean", aliases=["stop-clean"], help="Detiene y borra bases de datos").set_defaults(func=cmd_clean)
+    
+    sub_clean = sub.add_parser(
+        "clean",
+        aliases=["stop-clean", "reset-dbs", "reset-db", "limpiar-dbs"],
+        help="Detiene y borra completamente volúmenes y bases de datos",
+    )
+    sub_clean.add_argument("--force", "-f", action="store_true", help="Omite la confirmación manual interactiva")
+    sub_clean.set_defaults(func=cmd_clean)
+
     sub.add_parser("status", aliases=["ps"], help="Estado de contenedores").set_defaults(func=cmd_status)
     sub.add_parser("dev-backend", aliases=["backend", "api"], help="Corre FastAPI local").set_defaults(func=cmd_dev_backend)
     sub.add_parser("dev-frontend", aliases=["frontend", "front"], help="Corre Vite local").set_defaults(func=cmd_dev_frontend)
@@ -436,6 +496,16 @@ Comandos habituales:
     sub_dump.add_argument("--output-dir", "-o", type=Path, default=None, help="Directorio destino personalizado")
     sub_dump.add_argument("--bucket", "-b", type=str, default="card_assets", help="Bucket GridFS (default: card_assets)")
     sub_dump.set_defaults(func=cmd_dump_images)
+
+    sub_gen = sub.add_parser(
+        "generar_cartas",
+        aliases=["generar-cartas", "seed-cards"],
+        help="Ensambla arte 5:7 e inyecta N cartas aleatorias en la base de datos",
+    )
+    sub_gen.add_argument("cantidad", nargs="?", type=int, default=None, help="Cantidad N de cartas a generar")
+    sub_gen.add_argument("--seed", type=int, default=None, help="Semilla opcional para el sorteo")
+    sub_gen.add_argument("--preview-dir", type=Path, default=None, help="Directorio opcional para guardar vistas previas")
+    sub_gen.set_defaults(func=cmd_generar_cartas)
 
     args = parser.parse_args()
     if not args.command:
