@@ -99,7 +99,7 @@ ehthumbs_vista.db
 .LSOverride
 
 AGENTS.md
-DocsE/
+backend/docs/contracts/
 
 # La guía oficial de raíz forma parte del repositorio.
 !/AGENTS.md
@@ -111,10 +111,6 @@ prueba/
 .env
 .env.*
 
-# Pruebas locales
-/backend/tests/
-/frontend/tests/
-
 # Archivos de entorno (incluidos ejemplos)
 **/.env*
 
@@ -122,7 +118,3 @@ prueba/
 **/.env
 **/.env.*
 !**/.env.example
-
-# Pruebas locales
-/backend/tests/
-/frontend/tests/

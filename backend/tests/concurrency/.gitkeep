@@ -1,0 +1,2 @@
+# Directorio de pruebas de concurrencia e invariantes de turno (RNF-PRU-03).
+# Se implementarán en Sprint 2/3 para verificar condiciones de carrera en ConfirmarTurno y LiquidarPartida.
