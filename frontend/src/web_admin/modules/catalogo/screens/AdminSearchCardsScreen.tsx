@@ -156,7 +156,7 @@ export function AdminSearchCardsScreen({
       {/* --------------------------------------------------------------------- */}
       {/* 1. ENCABEZADO EXCLUSIVO PARA ADMINISTRADORES                          */}
       {/* --------------------------------------------------------------------- */}
-      <section className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 rounded-2xl glass-card border border-arena-border p-6 shadow-xl">
+      <section className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 glass-card p-6">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/15 text-blue-400">
             <Shield className="h-6 w-6" aria-hidden="true" />
@@ -169,11 +169,10 @@ export function AdminSearchCardsScreen({
               </span>
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              Buscador y Auditoría de Cartas
+              Buscador y Catálogo de Cartas
             </h1>
             <p className="mt-1 text-xs text-slate-400 max-w-2xl">
-              Explora, audita y valida todas las cartas persistidas en la proyección MongoDB y PostgreSQL.
-              Esta vista está adaptada para administración técnica global (sin inventario de jugador).
+              Explora y administra todas las cartas registradas en la arena
             </p>
           </div>
         </div>
@@ -183,7 +182,7 @@ export function AdminSearchCardsScreen({
             <button
               type="button"
               onClick={onNavigateToCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-arena-accent px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/15 transition hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl px-5 py-2.5 text-xs shadow-lg shadow-blue-600/25 border border-blue-400/30 transition-all duration-200 active:scale-[0.99]"
             >
               <PlusCircle className="h-4 w-4" aria-hidden="true" />
               <span>Crear Nueva Carta</span>
@@ -194,7 +193,7 @@ export function AdminSearchCardsScreen({
             <button
               type="button"
               onClick={onNavigateToPlayerView}
-              className="inline-flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-950/40 px-3.5 py-2.5 text-xs font-semibold text-blue-200 transition hover:bg-blue-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              className="inline-flex items-center gap-2 bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all"
               title="Abre la pestaña de vista de jugador para confirmar cómo se visualizan las cartas en el catálogo y colección del jugador"
             >
               <Eye className="h-4 w-4 text-blue-400" aria-hidden="true" />
@@ -207,7 +206,7 @@ export function AdminSearchCardsScreen({
       {/* --------------------------------------------------------------------- */}
       {/* 2. BARRA DE BÚSQUEDA Y FILTROS ADMINISTRATIVOS                        */}
       {/* --------------------------------------------------------------------- */}
-      <section className="rounded-2xl border border-arena-border bg-arena-card/85 p-5 shadow-lg space-y-4">
+      <section className="glass-card p-5 space-y-4">
         {/* Fila superior: Input de búsqueda + Modos de vista + Recargar */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           <form
@@ -220,13 +219,13 @@ export function AdminSearchCardsScreen({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por nombre, código oficial (PKA-...) o descripción..."
-              className="w-full rounded-xl border border-arena-border bg-arena-surface/80 pl-10 pr-24 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition focus:border-blue-400 focus:bg-arena-surface focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="w-full bg-[#090D16]/90 border border-white/10 rounded-xl pl-10 pr-24 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={handleClear}
-                className="absolute right-14 text-slate-400 hover:text-slate-200 p-1"
+                className="absolute right-16 text-slate-400 hover:text-slate-200 p-1"
                 aria-label="Limpiar texto"
               >
                 <X className="h-4 w-4" />
@@ -235,14 +234,14 @@ export function AdminSearchCardsScreen({
             <button
               type="submit"
               disabled={isLoading}
-              className="absolute right-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-500 disabled:opacity-50"
+              className="absolute right-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 px-3 py-1.5 text-xs font-bold text-white transition disabled:opacity-50"
             >
               Buscar
             </button>
           </form>
 
           {/* Selector de modo: Grilla vs Tabla */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-arena-border bg-arena-surface p-1 shrink-0 self-end md:self-auto">
+          <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-[#090D16]/90 p-1 shrink-0 self-end md:self-auto">
             <button
               type="button"
               onClick={() => setViewMode("grid")}
@@ -264,7 +263,7 @@ export function AdminSearchCardsScreen({
                   ? "bg-blue-600 text-white shadow"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
               }`}
-              title="Vista en tabla técnica"
+              title="Vista en tabla"
             >
               <TableIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Tabla</span>
@@ -274,7 +273,7 @@ export function AdminSearchCardsScreen({
               onClick={reload}
               disabled={isLoading}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
-              title="Recargar catálogo desde MongoDB"
+              title="Recargar catálogo"
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin text-blue-400" : ""}`} />
             </button>
@@ -371,15 +370,12 @@ export function AdminSearchCardsScreen({
         </div>
 
         {/* Resumen de resultados */}
-        <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-arena-border/30">
+        <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/10">
           <div>
             Total registradas: <strong className="text-white font-mono">{totalResults}</strong>
             {totalResults > 0 && (
               <span> · Mostrando página <strong className="text-white">{currentPage}</strong> de <strong className="text-white">{totalPages}</strong></span>
             )}
-          </div>
-          <div className="text-[11px] text-slate-500">
-            Fuente autoritativa: MongoDB <code className="text-slate-400">cards_projection</code>
           </div>
         </div>
       </section>
@@ -390,8 +386,8 @@ export function AdminSearchCardsScreen({
       {isCatalogUnavailable && (
         <AlertBanner
           variant="error"
-          title="Catálogo no disponible (503)"
-          description="No fue posible conectar con la proyección NoSQL en MongoDB. Verifica que los servicios de base de datos estén activos."
+          title="Catálogo no disponible"
+          description="No fue posible consultar el catálogo en este momento. Intenta nuevamente en unos segundos."
           actionLabel="Reintentar conexión"
           onAction={reload}
         />
@@ -511,22 +507,22 @@ export function AdminSearchCardsScreen({
                 <button
                   type="button"
                   onClick={() => setInspectedCard(card)}
-                  className="w-full mt-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-500/40 bg-blue-950/40 px-3 py-2 text-xs font-semibold text-blue-200 hover:bg-blue-900/60 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                  className="w-full mt-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-slate-800/70 hover:bg-slate-700/80 px-3 py-2 text-xs font-semibold text-slate-200 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 >
                   <Eye className="h-3.5 w-3.5 text-blue-400" />
-                  <span>Ver Ficha & Medios Originales</span>
+                  <span>Ver Ficha de Carta</span>
                 </button>
               </article>
             );
           })}
         </div>
       ) : (
-        /* VISTA DE TABLA TÉCNICA */
-        <div className="rounded-2xl border border-arena-border bg-arena-card/90 overflow-hidden shadow-xl">
+        /* VISTA DE TABLA */
+        <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-arena-border bg-arena-surface/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <tr className="border-b border-white/10 bg-slate-900/60 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   <th className="py-3 px-4">Código</th>
                   <th className="py-3 px-3">Miniatura</th>
                   <th className="py-3 px-4">Nombre</th>
@@ -535,11 +531,10 @@ export function AdminSearchCardsScreen({
                   <th className="py-3 px-3">Costo</th>
                   <th className="py-3 px-3">Poder / HP</th>
                   <th className="py-3 px-4">Habilidad</th>
-                  <th className="py-3 px-4">ID Sistema</th>
                   <th className="py-3 px-4 text-right">Acción</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-arena-border/50 text-slate-200">
+              <tbody className="divide-y divide-white/10 text-slate-200">
                 {results.map((card) => {
                   const cardType = (card.type || "FUE") as CardType;
                   const typeMeta = CARD_TYPE_VISUAL_META[cardType] ?? CARD_TYPE_VISUAL_META.FUE;
@@ -551,7 +546,7 @@ export function AdminSearchCardsScreen({
                         {card.code}
                       </td>
                       <td className="py-2 px-3">
-                        <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-950 border border-arena-border/60 flex items-center justify-center shrink-0">
+                        <div className="h-10 w-10 rounded-lg overflow-hidden bg-slate-950 border border-white/10 flex items-center justify-center shrink-0">
                           <AdminCardThumbnail cardId={card.id} cardName={card.name} className="h-full w-full object-contain p-0.5" />
                         </div>
                       </td>
@@ -577,9 +572,6 @@ export function AdminSearchCardsScreen({
                       </td>
                       <td className="py-3 px-4 max-w-[180px] truncate text-slate-300">
                         {card.ability_name ? `${card.ability_code} · ${card.ability_name}` : "—"}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-[10px] text-slate-400 select-all max-w-[120px] truncate">
-                        {card.id}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
@@ -680,16 +672,16 @@ export function AdminSearchCardsScreen({
 
             {/* Columna izquierda: Imagen Grande / Original */}
             <div className="w-full md:w-5/12 flex flex-col items-center">
-              <div className="w-full aspect-[5/7] rounded-xl overflow-hidden bg-slate-950 border border-arena-border shadow-inner flex items-center justify-center p-2 relative group">
+              <div className="w-full aspect-[5/7] rounded-xl overflow-hidden bg-slate-950 border border-white/10 shadow-inner flex items-center justify-center p-2 relative group">
                 <AdminCardDetailImage card={inspectedCard} />
               </div>
               <div className="w-full mt-3 flex items-center justify-between text-[11px] text-slate-400">
-                <span>Versión Grande (GridFS)</span>
+                <span>Arte Oficial de Colección</span>
                 <span className="font-mono text-[10px] text-slate-500">{inspectedCard.code}</span>
               </div>
             </div>
 
-            {/* Columna derecha: Atributos Técnicos e IDs del Sistema */}
+            {/* Columna derecha: Atributos Oficiales de la Carta */}
             <div className="w-full md:w-7/12 flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -708,21 +700,21 @@ export function AdminSearchCardsScreen({
                   {inspectedCard.name}
                 </h2>
 
-                <p className="mt-2 text-xs text-slate-300 leading-relaxed bg-arena-surface/50 p-3 rounded-xl border border-arena-border/50">
+                <p className="mt-2 text-xs text-slate-300 leading-relaxed bg-[#090D16]/80 p-3 rounded-xl border border-white/10">
                   {inspectedCard.description || "Sin descripción adicional registrada."}
                 </p>
 
                 {/* Métricas de combate */}
                 <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-                  <div className="rounded-xl border border-arena-border bg-arena-surface p-2.5">
+                  <div className="rounded-xl border border-white/10 bg-[#090D16]/80 p-2.5">
                     <span className="text-[10px] text-slate-400 block uppercase font-bold">Costo</span>
                     <span className="text-base font-mono font-extrabold text-amber-300">⚡ {inspectedCard.cost}</span>
                   </div>
-                  <div className="rounded-xl border border-arena-border bg-arena-surface p-2.5">
+                  <div className="rounded-xl border border-white/10 bg-[#090D16]/80 p-2.5">
                     <span className="text-[10px] text-slate-400 block uppercase font-bold">Poder</span>
                     <span className="text-base font-mono font-extrabold text-blue-300">⚔️ {inspectedCard.power}</span>
                   </div>
-                  <div className="rounded-xl border border-arena-border bg-arena-surface p-2.5">
+                  <div className="rounded-xl border border-white/10 bg-[#090D16]/80 p-2.5">
                     <span className="text-[10px] text-slate-400 block uppercase font-bold">Puntos Vida</span>
                     <span className="text-base font-mono font-extrabold text-emerald-300">❤️ {inspectedCard.hp}</span>
                   </div>
@@ -740,25 +732,10 @@ export function AdminSearchCardsScreen({
                   </div>
                 )}
 
-                {/* Metadatos de Sistema */}
+                {/* Metadatos de Colección */}
                 <div className="mt-4 space-y-2 text-xs">
-                  <div className="flex items-center justify-between rounded-lg bg-slate-900/80 px-3 py-2 border border-arena-border/60">
-                    <span className="text-[11px] text-slate-400">ID Primario (PostgreSQL/Mongo):</span>
-                    <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-200">
-                      <span className="select-all">{inspectedCard.id}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(inspectedCard.id, "card-id")}
-                        className="text-slate-400 hover:text-white"
-                        title="Copiar ID"
-                      >
-                        {copiedField === "card-id" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-lg bg-slate-900/80 px-3 py-2 border border-arena-border/60">
-                    <span className="text-[11px] text-slate-400">Código Oficial Canónico:</span>
+                  <div className="flex items-center justify-between rounded-xl bg-[#090D16]/90 px-3.5 py-2.5 border border-white/10">
+                    <span className="text-[11px] text-slate-400">Código de Colección:</span>
                     <div className="flex items-center gap-1.5 font-mono text-[11px] text-emerald-300 font-bold">
                       <span className="select-all">{inspectedCard.code}</span>
                       <button
@@ -775,11 +752,11 @@ export function AdminSearchCardsScreen({
               </div>
 
               {/* Pie del modal */}
-              <div className="pt-4 border-t border-arena-border flex items-center justify-end">
+              <div className="pt-4 border-t border-white/10 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => setInspectedCard(null)}
-                  className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
+                  className="bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2 text-xs font-semibold transition-all"
                 >
                   Cerrar Ficha
                 </button>

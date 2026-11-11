@@ -1,68 +1,107 @@
 /**
- * Tarjeta de diagnóstico y verificación de conexión con PostgreSQL en tiempo real.
+ * Ficha Oficial de Entrenador (Trainer Card) en el perfil principal del jugador.
  */
 
 import React from "react";
+import { Award, BookOpen, Layers, ShieldCheck } from "lucide-react";
 import type { PlayerProfileDTO } from "../types/vista_principal.types";
 
 export interface DatabaseVerificationCardProps {
   readonly profile: PlayerProfileDTO;
+  readonly deckCount?: number;
+}
+
+function getCompetitiveRankTitle(elo: number): string {
+  if (elo >= 1800) return "Maestro de la Arena";
+  if (elo >= 1400) return "Veterano de Élite";
+  if (elo >= 1000) return "Contendiente Oficial";
+  return "Aspirante de la Liga";
 }
 
 export function DatabaseVerificationCard({
   profile,
+  deckCount = 0,
 }: DatabaseVerificationCardProps): React.ReactElement {
   const formattedDate = profile.created_at
-    ? new Date(profile.created_at).toLocaleString()
-    : "Recién registrado";
+    ? new Date(profile.created_at).toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "Temporada actual";
+
+  const rankTitle = getCompetitiveRankTitle(profile.elo);
 
   return (
-    <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/30 shadow-xl relative overflow-hidden">
-      <div className="absolute top-0 right-0 px-4 py-1 bg-emerald-500/20 text-emerald-400 text-[11px] font-semibold rounded-bl-xl border-l border-b border-emerald-500/30 flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        PostgreSQL 16: Conexión Verificada
+    <div className="p-6 glass-card relative overflow-hidden">
+      <div className="absolute top-0 right-0 px-4 py-1.5 bg-amber-500/15 text-amber-300 text-[11px] font-bold rounded-bl-xl border-l border-b border-amber-500/30 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+        Licencia Oficial Activa
       </div>
 
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-          </svg>
+      <div className="flex items-center gap-3.5 mb-5">
+        <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+          <Award className="w-5 h-5" />
         </div>
         <div>
           <h2 className="text-base font-bold text-white">
-            Verificación de Persistencia SQL
+            Ficha Oficial de Entrenador
           </h2>
           <p className="text-xs text-slate-400">
-            Datos reales persistidos en las tablas <code className="text-emerald-300">identity_users</code> y <code className="text-emerald-300">player_profiles</code>
+            Resumen competitivo y estado de progresión en Poké-Arena
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs bg-slate-950/60 p-4 rounded-xl border border-slate-800 font-mono">
-        <div>
-          <span className="text-slate-500 block mb-0.5">Identificador de Usuario (UUID):</span>
-          <span className="text-slate-200 select-all font-semibold">{profile.user_id}</span>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        {/* 1. Rango Competitivo */}
+        <div className="bg-[#090D16]/85 p-4 rounded-xl border border-white/10 space-y-1.5">
+          <div className="flex items-center gap-2 text-amber-400 font-semibold">
+            <Award className="w-4 h-4 shrink-0" />
+            <span className="uppercase tracking-wider text-[11px]">Rango Competitivo</span>
+          </div>
+          <p className="text-sm font-bold text-white">{rankTitle}</p>
+          <p className="text-[11px] text-slate-400">
+            Clasificación actual con <span className="text-amber-300 font-semibold">{profile.elo} PTS</span>
+          </p>
         </div>
-        <div>
-          <span className="text-slate-500 block mb-0.5">Correo Autenticado:</span>
-          <span className="text-slate-200">{profile.email || "No provisto"}</span>
+
+        {/* 2. Progreso de Colección */}
+        <div className="bg-[#090D16]/85 p-4 rounded-xl border border-white/10 space-y-1.5">
+          <div className="flex items-center gap-2 text-blue-400 font-semibold">
+            <BookOpen className="w-4 h-4 shrink-0" />
+            <span className="uppercase tracking-wider text-[11px]">Progreso de Colección</span>
+          </div>
+          <p className="text-sm font-bold text-white">
+            {profile.has_received_initial_collection
+              ? "Colección Inicial Desbloqueada"
+              : "Paquete Inicial Disponible"}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            Cartas listas para personalizar tus estrategias
+          </p>
         </div>
-        <div>
-          <span className="text-slate-500 block mb-0.5">Rol en Base de Datos:</span>
-          <span className="text-emerald-400 font-semibold">{profile.role}</span>
-        </div>
-        <div>
-          <span className="text-slate-500 block mb-0.5">Fecha de Registro / Creación:</span>
-          <span className="text-slate-300">{formattedDate}</span>
+
+        {/* 3. Estado de Mazos */}
+        <div className="bg-[#090D16]/85 p-4 rounded-xl border border-white/10 space-y-1.5">
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+            <Layers className="w-4 h-4 shrink-0" />
+            <span className="uppercase tracking-wider text-[11px]">Estado de Mazos</span>
+          </div>
+          <p className="text-sm font-bold text-white">
+            {deckCount > 0
+              ? `${deckCount} ${deckCount === 1 ? "Mazo Listo" : "Mazos Listos"} para la Arena`
+              : "Sin mazos armados aún"}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            Miembro desde {formattedDate}
+          </p>
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-500 mt-3 flex items-center gap-1.5">
-        <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-        </svg>
-        <span>La sesión fue emitida y validada mediante la infraestructura oficial de Poké-Arena.</span>
+      <p className="text-[11px] text-slate-400 mt-4 flex items-center gap-1.5">
+        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+        <span>Credencial de entrenador habilitada para torneos y duelos oficiales en Poké-Arena.</span>
       </p>
     </div>
   );

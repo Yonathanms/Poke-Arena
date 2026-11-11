@@ -76,9 +76,9 @@ export function CardForm({
     <form
       noValidate
       onSubmit={handleFormSubmit}
-      className="space-y-6 rounded-2xl glass-card border border-arena-border p-6 sm:p-8"
+      className="space-y-6 glass-card p-6 sm:p-8"
     >
-      <div className="border-b border-arena-border/70 pb-4">
+      <div className="border-b border-white/10 pb-4">
         <h3 className="text-lg font-bold tracking-tight text-white">Datos de la Carta</h3>
         <p className="mt-0.5 text-xs text-slate-400">
           Completa los atributos oficiales. La vista previa lateral se actualiza al instante.
@@ -107,10 +107,10 @@ export function CardForm({
           value={values.name}
           onChange={(e) => onChange("name", e.currentTarget.value)}
           placeholder="Ej. Charizard"
-          className={`w-full rounded-xl border bg-arena-surface/90 px-4 py-2.5 text-sm text-white placeholder-slate-500 transition focus:outline-none focus:ring-2 disabled:opacity-60 ${
+          className={`w-full bg-[#090D16]/90 border rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition-all focus:outline-none focus:ring-2 disabled:opacity-60 ${
             errors.name
               ? "border-red-500/70 focus:ring-red-400/40"
-              : "border-arena-border focus:border-arena-accent focus:ring-blue-500/30"
+              : "border-white/10 focus:border-blue-500 focus:ring-blue-500/20"
           }`}
         />
         {errors.name && <p className="text-xs font-medium text-red-300">{errors.name}</p>}
@@ -144,10 +144,10 @@ export function CardForm({
               const raw = e.currentTarget.value;
               onChange("cost", raw === "" ? Number.NaN : Number(raw));
             }}
-            className={`w-full rounded-xl border bg-arena-surface/90 px-4 py-2.5 font-mono text-sm text-white transition focus:outline-none focus:ring-2 disabled:opacity-60 ${
+            className={`w-full bg-[#090D16]/90 border rounded-xl px-3.5 py-2.5 font-mono text-sm text-slate-100 transition-all focus:outline-none focus:ring-2 disabled:opacity-60 ${
               errors.cost
                 ? "border-red-500/70 focus:ring-red-400/40"
-                : "border-arena-border focus:border-arena-accent focus:ring-blue-500/30"
+                : "border-white/10 focus:border-blue-500 focus:ring-blue-500/20"
             }`}
           />
           {errors.cost && <p className="text-xs font-medium text-red-300">{errors.cost}</p>}
@@ -179,10 +179,10 @@ export function CardForm({
               const raw = e.currentTarget.value;
               onChange("power", raw === "" ? Number.NaN : Number(raw));
             }}
-            className={`w-full rounded-xl border bg-arena-surface/90 px-4 py-2.5 font-mono text-sm text-white transition focus:outline-none focus:ring-2 disabled:opacity-60 ${
+            className={`w-full bg-[#090D16]/90 border rounded-xl px-3.5 py-2.5 font-mono text-sm text-slate-100 transition-all focus:outline-none focus:ring-2 disabled:opacity-60 ${
               errors.power
                 ? "border-red-500/70 focus:ring-red-400/40"
-                : "border-arena-border focus:border-arena-accent focus:ring-blue-500/30"
+                : "border-white/10 focus:border-blue-500 focus:ring-blue-500/20"
             }`}
           />
           {errors.power && <p className="text-xs font-medium text-red-300">{errors.power}</p>}
@@ -203,7 +203,7 @@ export function CardForm({
             disabled={isLocked}
             value={values.card_type}
             onChange={(e) => onChange("card_type", e.currentTarget.value as CardType)}
-            className="w-full rounded-xl border border-arena-border bg-arena-surface/90 px-4 py-2.5 text-sm text-white transition focus:border-arena-accent focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
+            className="w-full bg-[#090D16]/90 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
           >
             {types && types.length > 0 ? (
               types.map((t) => (
@@ -232,7 +232,7 @@ export function CardForm({
             disabled={isLocked}
             value={values.rarity}
             onChange={(e) => onChange("rarity", e.currentTarget.value as CardRarity)}
-            className="w-full rounded-xl border border-arena-border bg-arena-surface/90 px-4 py-2.5 text-sm text-white transition focus:border-arena-accent focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
+            className="w-full bg-[#090D16]/90 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
           >
             {rarities && rarities.length > 0 ? (
               rarities.map((r) => (
@@ -261,7 +261,7 @@ export function CardForm({
             type="button"
             disabled={isLoadingAbilities || isLocked}
             onClick={onReloadAbilities}
-            className="inline-flex items-center gap-1 rounded-lg border border-arena-border bg-arena-surface px-2 py-1 text-[11px] font-semibold text-slate-300 hover:text-white disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-slate-800/70 hover:bg-slate-700/80 px-2.5 py-1 text-[11px] font-semibold text-slate-200 transition-all disabled:opacity-50"
           >
             <RefreshCw
               className={`h-3 w-3 ${isLoadingAbilities ? "animate-spin" : ""}`}
@@ -286,10 +286,10 @@ export function CardForm({
           disabled={isLocked || isLoadingAbilities}
           value={values.ability_code}
           onChange={(e) => onChange("ability_code", e.currentTarget.value)}
-          className={`w-full rounded-xl border bg-arena-surface/90 px-4 py-2.5 text-sm text-white transition focus:outline-none focus:ring-2 disabled:opacity-60 ${
+          className={`w-full bg-[#090D16]/90 border rounded-xl px-3.5 py-2.5 text-sm text-slate-100 transition-all focus:outline-none focus:ring-2 disabled:opacity-60 ${
             errors.ability_code
               ? "border-red-500/70 focus:ring-red-400/40"
-              : "border-arena-border focus:border-arena-accent focus:ring-blue-500/30"
+              : "border-white/10 focus:border-blue-500 focus:ring-blue-500/20"
           }`}
         >
           {abilities.map((ability) => (
@@ -313,12 +313,12 @@ export function CardForm({
       />
 
       {/* Acciones */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-arena-border/70 pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
         <button
           type="button"
           disabled={isLocked}
           onClick={onReset}
-          className="inline-flex items-center gap-2 rounded-xl border border-arena-border bg-arena-surface px-4 py-2.5 text-xs font-semibold text-slate-300 transition hover:text-white disabled:opacity-50"
+          className="inline-flex items-center gap-2 bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2 text-xs font-semibold transition-all disabled:opacity-50"
         >
           <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Limpiar formulario</span>
@@ -327,7 +327,7 @@ export function CardForm({
         <button
           type="submit"
           disabled={isLocked}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition hover:from-blue-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl px-5 py-2.5 text-sm shadow-lg shadow-blue-600/25 border border-blue-400/30 transition-all duration-200 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? (
             <>

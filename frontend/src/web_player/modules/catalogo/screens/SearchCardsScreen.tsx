@@ -70,7 +70,7 @@ export const SearchCardsScreen: React.FC<SearchCardsScreenProps> = ({ mode = 'pl
           <p className="text-xs text-slate-400 mt-0.5">
             {mode === 'player'
               ? 'Explora todas las cartas disponibles en Poké-Arena, consulta tus copias poseídas y filtra por tipo, costo y colección.'
-              : 'Consulta el catálogo persistido en MongoDB con filtros en tiempo real y paginación de servidor.'}
+              : 'Explora y administra todas las cartas registradas en la arena.'}
           </p>
         </div>
 
@@ -82,8 +82,8 @@ export const SearchCardsScreen: React.FC<SearchCardsScreenProps> = ({ mode = 'pl
             </div>
           )}
           {totalResults > 0 && (
-            <div className="px-3 py-1.5 rounded-xl bg-arena-card border border-arena-border text-xs text-slate-300 font-mono">
-              Total indexadas: <strong className="text-amber-300">{totalResults}</strong>
+            <div className="px-3 py-1.5 rounded-xl bg-[#0F172A]/80 border border-white/10 text-xs text-slate-300 font-mono">
+              Total en catálogo: <strong className="text-amber-300">{totalResults}</strong>
             </div>
           )}
         </div>
@@ -122,7 +122,7 @@ export const SearchCardsScreen: React.FC<SearchCardsScreenProps> = ({ mode = 'pl
             <div>
               <h4 className="text-sm font-bold text-red-100">
                 {isCatalogUnavailable
-                  ? "Catálogo temporalmente no disponible (503)"
+                  ? "Catálogo temporalmente no disponible"
                   : "Error al consultar el catálogo"}
               </h4>
               <p className="text-xs text-red-300/90 mt-0.5">

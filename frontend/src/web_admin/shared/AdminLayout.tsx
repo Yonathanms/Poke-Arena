@@ -11,9 +11,10 @@
  */
 
 import React from "react";
-import { Clock, Loader2, LogOut, ShieldCheck, Sparkles } from "lucide-react";
+import { Clock, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import type { ActiveSessionSnapshot } from "../modules/auth/types/auth.types";
 import { CreateCardScreen } from "../modules/catalogo/screens/CreateCardScreen";
+import pokemonIcon from "../../images/icons/icono_pokemon.png";
 
 export interface AdminLayoutProps {
   readonly session: ActiveSessionSnapshot;
@@ -44,14 +45,18 @@ export function AdminLayout({
   const formattedTime = formatRemainingSessionTime(remainingSeconds);
 
   return (
-    <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col">
+    <div className="min-h-screen poke-arena-bg text-slate-100 flex flex-col">
       {/* Barra superior administrativa */}
-      <header className="sticky top-0 z-40 glass-panel border-b border-arena-border/80">
+      <header className="sticky top-0 z-40 glass-panel border-b border-white/10">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           {/* Identidad de Poké-Arena y del portal */}
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 shadow-lg shadow-blue-500/20">
-              <Sparkles className="h-5 w-5 text-white" aria-hidden="true" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0F172A]/90 border border-white/10 p-1.5 shadow-lg shadow-blue-500/20">
+              <img
+                src={pokemonIcon}
+                alt="Poké-Arena"
+                className="h-6 w-6 object-contain drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+              />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -68,16 +73,11 @@ export function AdminLayout({
           <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             <div
               aria-label="Estado de sesión administrativa"
-              className="flex items-center gap-2 rounded-xl border border-arena-border bg-arena-surface/80 px-3 py-1.5 text-xs"
+              title={`Rol activo: ${session.role}`}
+              className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs"
             >
               <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
-              <span className="font-semibold text-emerald-300">{session.role}</span>
-              <span className="text-slate-500" aria-hidden="true">
-                ·
-              </span>
-              <span className="font-mono text-slate-300 truncate max-w-[140px]" title={session.userId}>
-                ID: {session.userId}
-              </span>
+              <span className="font-semibold text-emerald-300">Administrador</span>
             </div>
 
             <div
@@ -86,7 +86,7 @@ export function AdminLayout({
               className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-mono ${
                 isExpiringSoon
                   ? "border-amber-500/40 bg-amber-950/40 text-amber-200"
-                  : "border-arena-border bg-arena-surface/80 text-slate-300"
+                  : "border-white/10 bg-slate-800/70 text-slate-300"
               }`}
             >
               <Clock
