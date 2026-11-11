@@ -18,7 +18,19 @@ import {
   CARD_TYPE_VISUAL_META,
   formatDisplayPower,
 } from "../components/CardPreviewCard";
-import type { CreatedCardSessionEntry } from "../hooks/useCreateCard";
+import type {
+  CardCreatedResponseDTO,
+  CreateCardFormValues,
+} from "../types/card-admin.types";
+
+export interface CreatedCardSessionEntry {
+  readonly card: CardCreatedResponseDTO;
+  readonly values: CreateCardFormValues;
+  readonly abilityName: string | null;
+  readonly imageFileName: string;
+  readonly createdAtIso: string;
+  readonly correlationId: string | null;
+}
 
 export interface CatalogListScreenProps {
   readonly entries: readonly CreatedCardSessionEntry[];
