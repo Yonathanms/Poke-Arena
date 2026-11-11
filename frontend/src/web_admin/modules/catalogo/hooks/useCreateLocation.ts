@@ -1,13 +1,11 @@
 // Hook de estado y mutación para crear una ubicación
 import { useCallback, useRef, useState } from "react";
+import { ApiHttpError } from "../../../../shared/services/http-client";
 import { createLocation } from "../services/catalog.api";
 import type {
   CreateLocationFormValues,
   LocationResponseDTO,
 } from "../types/location-admin.types";
-
-// Placeholder: reemplazar con token real cuando el módulo de identidad esté listo
-const TOKEN_PLACEHOLDER = "admin-token-placeholder";
 
 interface State {
   loading: boolean;
@@ -15,12 +13,29 @@ interface State {
   success: LocationResponseDTO | null;
 }
 
+function formatLocationError(err: unknown): string {
+  if (err instanceof ApiHttpError) {
+    if (err.status === 401) {
+      return "No estás autenticado o tu sesión expiró. Inicia sesión para continuar.";
+    }
+    if (err.status === 403) {
+      return "No tienes permisos de administrador para crear ubicaciones en el catálogo.";
+    }
+    return err.detail || `No se pudo crear la ubicación (Error HTTP ${err.status}).`;
+  }
+
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+
+  return "Error inesperado al crear la ubicación.";
+}
+
 export function useCreateLocation() {
   const [state, setState] = useState<State>({ loading: false, error: null, success: null });
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   const submitLocation = useCallback(async (values: CreateLocationFormValues) => {
-    
     // Verifica imagen no nula
     if (!values.imagen) {
       setState((s) => ({ ...s, error: "Debe seleccionar una imagen." }));
@@ -29,7 +44,7 @@ export function useCreateLocation() {
 
     setState({ loading: true, error: null, success: null });
 
-    // Siguiente paso: construir FormData y llamar al API
+    // Siguiente paso: construir FormData y llamar al API usando la sesión autenticada
     const formData = new FormData();
     formData.append("nombre", values.nombre);
     formData.append("descripcion", values.descripcion);
@@ -42,22 +57,19 @@ export function useCreateLocation() {
 
     try {
       // Intenta crear ubicación
-      const result = await createLocation(formData, idempotencyKeyRef.current, TOKEN_PLACEHOLDER);
+      const result = await createLocation(formData, idempotencyKeyRef.current);
       idempotencyKeyRef.current = crypto.randomUUID();
       setState({ loading: false, error: null, success: result });
     } catch (err: unknown) {
-      const e = err as { detail?: string | object };
-      const msg =
-        typeof e.detail === "string"
-          ? e.detail
-          : typeof e.detail === "object"
-            ? JSON.stringify(e.detail)
-            : "Error inesperado al crear la ubicación.";
-      setState({ loading: false, error: msg, success: null });
+      if (err instanceof ApiHttpError && err.status >= 400 && err.status < 500 && err.status !== 409) {
+        idempotencyKeyRef.current = crypto.randomUUID();
+      }
+      setState({ loading: false, error: formatLocationError(err), success: null });
     }
   }, []);
 
   const reset = useCallback(() => {
+    idempotencyKeyRef.current = crypto.randomUUID();
     setState({ loading: false, error: null, success: null });
   }, []);
 
