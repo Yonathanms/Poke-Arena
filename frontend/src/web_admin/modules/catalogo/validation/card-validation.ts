@@ -1,9 +1,5 @@
 /**
- * Reglas puras y constantes de validación para 2.1.1 — Crear Carta.
- *
- * Esta capa centraliza las invariantes del contrato HTTP (`CARD_CREATION_FRONTEND_HANDOFF.md`)
- * y del dominio (`carta_model.py`, `imagen_carta_adapter.py`) sin acoplarse a componentes
- * React ni a APIs del DOM, permitiendo su verificación unitaria directa en Node.js.
+ * Reglas puras y funciones de validación para 2.1.1 — Crear Carta.
  */
 
 import type {
@@ -13,17 +9,18 @@ import type {
   CreateCardFormValues,
   ImageDimensions,
   ImageFileCandidate,
+  ValidatedCardImageSelection,
 } from "../types/card-admin.types";
 
-/** Formatos MIME de imagen permitidos en el cliente y servidor. */
-export const ALLOWED_IMAGE_MIME_TYPES: readonly AllowedImageMimeType[] = Object.freeze([
+/** Formatos MIME de imagen permitidos (PNG, JPG/JPEG, WebP). */
+export const ALLOWED_IMAGE_MIME_TYPES: readonly AllowedImageMimeType[] = [
   "image/png",
   "image/jpeg",
   "image/webp",
-]);
+];
 
-/** Restricciones contractuales exactas sincronizadas con el backend 1G. */
-export const CARD_VALIDATION_CONSTRAINTS = Object.freeze({
+/** Restricciones de negocio de la historia de usuario 2.1.1. */
+export const CARD_VALIDATION_CONSTRAINTS = {
   NAME_MIN_LENGTH: 1,
   NAME_MAX_LENGTH: 100,
   COST_MIN: 0,
@@ -39,28 +36,15 @@ export const CARD_VALIDATION_CONSTRAINTS = Object.freeze({
   IMAGE_MIN_HEIGHT: 840,
   IMAGE_ASPECT_WIDTH: 5,
   IMAGE_ASPECT_HEIGHT: 7,
-});
+} as const;
 
-const ALLOWED_MIME_SET: ReadonlySet<string> = new Set(ALLOWED_IMAGE_MIME_TYPES);
-
-/**
- * Recorta los espacios exteriores del nombre tal como hace `DatosCarta.normalizados()`
- * en el backend antes de validar su longitud y calcular la huella de idempotencia.
- */
 export function normalizeCardName(rawName: string): string {
   return rawName.trim();
 }
 
-/**
- * Valida el nombre de la carta: entre 1 y 100 caracteres tras recortar espacios externos,
- * sin caracteres nulos (`\0`).
- */
 export function validateCardName(rawName: string): string | null {
-  if (typeof rawName !== "string") {
+  if (typeof rawName !== "string" || rawName.includes("\0")) {
     return "El nombre de la carta es obligatorio.";
-  }
-  if (rawName.includes("\0")) {
-    return "El nombre contiene caracteres no permitidos.";
   }
   const normalized = normalizeCardName(rawName);
   if (normalized.length < CARD_VALIDATION_CONSTRAINTS.NAME_MIN_LENGTH) {
@@ -72,9 +56,6 @@ export function validateCardName(rawName: string): string | null {
   return null;
 }
 
-/**
- * Valida el costo de energía: entero exacto entre 0 y 10.
- */
 export function validateCardCost(cost: number): string | null {
   if (!Number.isInteger(cost)) {
     return "El costo debe ser un número entero.";
@@ -85,69 +66,39 @@ export function validateCardCost(cost: number): string | null {
   return null;
 }
 
-/**
- * Valida el poder base: entero exacto entre -20 y 20.
- */
 export function validateCardPower(power: number): string | null {
   if (!Number.isInteger(power)) {
     return "El poder debe ser un número entero.";
   }
-  if (
-    power < CARD_VALIDATION_CONSTRAINTS.POWER_MIN ||
-    power > CARD_VALIDATION_CONSTRAINTS.POWER_MAX
-  ) {
+  if (power < CARD_VALIDATION_CONSTRAINTS.POWER_MIN || power > CARD_VALIDATION_CONSTRAINTS.POWER_MAX) {
     return `El poder debe estar entre ${CARD_VALIDATION_CONSTRAINTS.POWER_MIN} y ${CARD_VALIDATION_CONSTRAINTS.POWER_MAX}.`;
   }
   return null;
 }
 
-/**
- * Valida que se haya seleccionado un tipo elemental (no vacío) y opcionalmente
- * verifica que forme parte de los tipos disponibles en el catálogo dinámico.
- */
-export function validateCardType(
-  cardType: string,
-  availableTypes?: ReadonlyArray<string>
-): string | null {
+export function validateCardType(cardType: string): string | null {
   const trimmed = typeof cardType === "string" ? cardType.trim() : "";
   if (!trimmed) {
     return "Debes seleccionar un tipo elemental.";
   }
-  if (availableTypes && availableTypes.length > 0 && !availableTypes.includes(trimmed)) {
-    return "El tipo elemental seleccionado no existe en el catálogo actual.";
-  }
   return null;
 }
 
-/**
- * Valida que se haya seleccionado una rareza (no vacía) y opcionalmente
- * verifica que forme parte de las rarezas disponibles en el catálogo dinámico.
- */
-export function validateCardRarity(
-  rarity: string,
-  availableRarities?: ReadonlyArray<string>
-): string | null {
+export function validateCardRarity(rarity: string): string | null {
   const trimmed = typeof rarity === "string" ? rarity.trim() : "";
   if (!trimmed) {
     return "Debes seleccionar una rareza.";
   }
-  if (availableRarities && availableRarities.length > 0 && !availableRarities.includes(trimmed)) {
-    return "La rareza seleccionada no existe en el catálogo actual.";
-  }
   return null;
 }
 
-/**
- * Valida el código de habilidad (`HAB-000` .. `HAB-999`) y, opcionalmente,
- * que exista dentro del listado administrativo cargado desde el backend.
- */
 export function validateAbilityCode(
   abilityCode: string,
   availableCodes?: ReadonlyArray<string>
 ): string | null {
   const trimmed = typeof abilityCode === "string" ? abilityCode.trim() : "";
   if (!trimmed) {
-    return "Debes seleccionar una habilidad.";
+    return "Debes seleccionar una habilidad (al menos HAB-000 Sin Habilidad).";
   }
   if (!CARD_VALIDATION_CONSTRAINTS.ABILITY_CODE_PATTERN.test(trimmed)) {
     return "El código de habilidad debe tener el formato HAB-NNN.";
@@ -158,37 +109,28 @@ export function validateAbilityCode(
   return null;
 }
 
-/**
- * Verifica que el MIME type reportado sea PNG, JPEG o WebP.
- */
 export function isAllowedImageMimeType(mimeType: string): mimeType is AllowedImageMimeType {
-  return ALLOWED_MIME_SET.has(mimeType.trim().toLowerCase());
+  return (ALLOWED_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType.trim().toLowerCase());
 }
 
-/**
- * Valida los metadatos básicos del archivo (presencia, formato MIME y rango de 1 a 5 000 000 bytes).
- * El límite es exactamente 5 000 000 bytes (no 5 MiB = 5 242 880 bytes), idéntico a `MAX_IMAGE_BYTES`.
- */
-export function validateImageFileMetadata(candidate: ImageFileCandidate | null | undefined): string | null {
+export function validateImageFileMetadata(
+  candidate: ImageFileCandidate | null | undefined
+): string | null {
   if (!candidate) {
-    return "Se requiere seleccionar una imagen original para la carta.";
+    return "Se requiere seleccionar una imagen para la carta.";
   }
   if (!isAllowedImageMimeType(candidate.mimeType)) {
-    return "Formato no permitido. Usa una imagen PNG, JPEG o WebP.";
+    return "Formato no permitido. Usa una imagen PNG, JPG o WebP.";
   }
   if (!Number.isInteger(candidate.sizeBytes) || candidate.sizeBytes < CARD_VALIDATION_CONSTRAINTS.IMAGE_MIN_BYTES) {
     return "El archivo de imagen está vacío.";
   }
   if (candidate.sizeBytes > CARD_VALIDATION_CONSTRAINTS.IMAGE_MAX_BYTES) {
-    return "La imagen supera el tamaño máximo permitido de 5 000 000 bytes (5 MB).";
+    return "La imagen supera el tamaño máximo permitido de 5 MB (5 000 000 bytes).";
   }
   return null;
 }
 
-/**
- * Comprueba la proporción exacta 5:7 usando aritmética entera (`7 * width === 5 * height`),
- * evitando errores de precisión en coma flotante y coincidiendo con `imagen_carta_adapter.py`.
- */
 export function hasExactCardAspectRatio(dimensions: ImageDimensions): boolean {
   if (!Number.isInteger(dimensions.width) || !Number.isInteger(dimensions.height)) {
     return false;
@@ -202,10 +144,6 @@ export function hasExactCardAspectRatio(dimensions: ImageDimensions): boolean {
   );
 }
 
-/**
- * Valida las dimensiones visuales de la imagen (mínimo 600 × 840 px, proporción exacta 5:7
- * y techo de 20 000 000 píxeles del backend).
- */
 export function validateImageDimensions(dimensions: ImageDimensions): string | null {
   const { width, height } = dimensions;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
@@ -226,159 +164,76 @@ export function validateImageDimensions(dimensions: ImageDimensions): string | n
   return null;
 }
 
-/**
- * Valida que una clave de idempotencia cumpla el patrón exigido por el backend:
- * 1 a 128 caracteres ASCII visibles (`0x21..0x7E`), excluyendo la coma (`0x2C`).
- */
 export function isValidIdempotencyKey(key: string): boolean {
   return typeof key === "string" && CARD_VALIDATION_CONSTRAINTS.IDEMPOTENCY_KEY_PATTERN.test(key);
 }
 
-/** Interfaz inyectable de creación/revocación de Object URLs para pruebas deterministas. */
-export interface ObjectUrlManager {
-  readonly createObjectURL: (blob: Blob) => string;
-  readonly revokeObjectURL: (url: string) => void;
-}
-
-/** Función inyectable que obtiene las dimensiones visuales de un archivo de imagen. */
-export type ImageDimensionsDecoder = (file: Blob, objectUrl: string) => Promise<ImageDimensions>;
-
-/** Resultado discriminado de la inspección y decodificación asíncrona de una imagen. */
-export type ImageInspectionOutcome =
-  | {
-      readonly status: "valid";
-      readonly previewUrl: string;
-      readonly dimensions: ImageDimensions;
-      readonly sizeBytes: number;
-      readonly mimeType: AllowedImageMimeType;
-    }
-  | {
-      readonly status: "invalid";
-      readonly errorMessage: string;
-    }
-  | {
-      readonly status: "cancelled";
-    };
-
 /**
- * Controlador secuencial para validar y previsualizar archivos de imagen evitando
- * fugas de `URL.createObjectURL` y condiciones de carrera cuando el usuario selecciona
- * o reemplaza archivos rápidamente.
- *
- * Garantías:
- * 1. Cada nueva selección o limpieza incrementa el contador de generación e invalida
- *    cualquier decodificación anterior aún en vuelo.
- * 2. Si una decodificación antigua termina después de haber sido reemplazada o limpiada,
- *    su `objectUrl` temporal se revoca inmediatamente y su resultado se descarta (`cancelled`).
- * 3. Si la validación de metadatos o dimensiones falla, la `objectUrl` recién creada se
- *    revoca antes de retornar `invalid`.
- * 4. Cuando una nueva imagen resulta válida, se revoca la `objectUrl` de la imagen válida
- *    anterior antes de conservar la nueva.
+ * Carga una imagen en el navegador para obtener su ancho y alto reales.
  */
-export class SequentialImageSelectionPipeline {
-  private readonly urlManager: ObjectUrlManager;
-  private readonly decodeDimensions: ImageDimensionsDecoder;
-  private currentGeneration = 0;
-  private activePreviewUrl: string | null = null;
+function readImageDimensions(objectUrl: string): Promise<ImageDimensions> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    img.src = objectUrl;
+  });
+}
 
-  constructor(options: {
-    readonly urlManager: ObjectUrlManager;
-    readonly decodeDimensions: ImageDimensionsDecoder;
-  }) {
-    this.urlManager = options.urlManager;
-    this.decodeDimensions = options.decodeDimensions;
+/**
+ * Valida un archivo de imagen (formato, tamaño <= 5 MB, resolución >= 600x840 y relación 5:7)
+ * y genera su URL de previsualización. Si falla, revoca la URL temporal inmediatamente.
+ */
+export async function validateAndInspectCardImage(
+  file: File
+): Promise<
+  | { readonly valid: true; readonly selection: ValidatedCardImageSelection }
+  | { readonly valid: false; readonly error: string }
+> {
+  const metadataError = validateImageFileMetadata({
+    sizeBytes: file.size,
+    mimeType: file.type,
+    fileName: file.name,
+  });
+  if (metadataError) {
+    return { valid: false, error: metadataError };
   }
 
-  public getCurrentPreviewUrl(): string | null {
-    return this.activePreviewUrl;
-  }
-
-  /**
-   * Revoca la URL de previsualización activa (si existe) e invalida cualquier
-   * operación de decodificación en curso.
-   */
-  public clearActiveSelection(): void {
-    this.currentGeneration += 1;
-    this.revokeActivePreview();
-  }
-
-  private revokeActivePreview(): void {
-    if (this.activePreviewUrl !== null) {
-      const urlToRevoke = this.activePreviewUrl;
-      this.activePreviewUrl = null;
-      this.urlManager.revokeObjectURL(urlToRevoke);
-    }
-  }
-
-  /**
-   * Valida metadatos, crea un `objectUrl`, decodifica dimensiones y verifica
-   * proporción 5:7, mínimo 600×840 y techo de 20 MP.
-   */
-  public async inspectFile(file: Blob & { readonly name?: string }): Promise<ImageInspectionOutcome> {
-    const generation = ++this.currentGeneration;
-
-    // Al iniciar una nueva selección, revocamos cualquier preview previa activa
-    this.revokeActivePreview();
-
-    const metadataError = validateImageFileMetadata({
-      sizeBytes: file.size,
-      mimeType: file.type,
-      fileName: file.name,
-    });
-    if (metadataError !== null) {
-      return { status: "invalid", errorMessage: metadataError };
+  const previewUrl = URL.createObjectURL(file);
+  try {
+    const dimensions = await readImageDimensions(previewUrl);
+    const dimError = validateImageDimensions(dimensions);
+    if (dimError) {
+      URL.revokeObjectURL(previewUrl);
+      return { valid: false, error: dimError };
     }
 
-    const normalizedMime = file.type.trim().toLowerCase() as AllowedImageMimeType;
-    const candidateUrl = this.urlManager.createObjectURL(file);
-
-    let dimensions: ImageDimensions;
-    try {
-      dimensions = await this.decodeDimensions(file, candidateUrl);
-    } catch {
-      this.urlManager.revokeObjectURL(candidateUrl);
-      if (generation !== this.currentGeneration) {
-        return { status: "cancelled" };
-      }
-      return {
-        status: "invalid",
-        errorMessage: "No se pudo decodificar la imagen. Verifica que el archivo PNG, JPEG o WebP no esté dañado.",
-      };
-    }
-
-    // Si mientras se decodificaba el usuario eligió otro archivo o desmontó el componente:
-    if (generation !== this.currentGeneration) {
-      this.urlManager.revokeObjectURL(candidateUrl);
-      return { status: "cancelled" };
-    }
-
-    const dimensionError = validateImageDimensions(dimensions);
-    if (dimensionError !== null) {
-      this.urlManager.revokeObjectURL(candidateUrl);
-      return { status: "invalid", errorMessage: dimensionError };
-    }
-
-    this.activePreviewUrl = candidateUrl;
     return {
-      status: "valid",
-      previewUrl: candidateUrl,
-      dimensions,
-      sizeBytes: file.size,
-      mimeType: normalizedMime,
+      valid: true,
+      selection: {
+        file,
+        previewUrl,
+        dimensions,
+        sizeBytes: file.size,
+        mimeType: file.type.trim().toLowerCase() as AllowedImageMimeType,
+      },
+    };
+  } catch {
+    URL.revokeObjectURL(previewUrl);
+    return {
+      valid: false,
+      error: "No se pudo decodificar la imagen. Verifica que el archivo PNG, JPG o WebP sea válido.",
     };
   }
 }
 
 /**
- * Ejecuta la validación integral de los campos de Crear Carta y devuelve los valores
- * normalizados si todos los campos son válidos.
+ * Valida todos los campos del formulario de Crear Carta.
  */
 export function validateCreateCardForm(
   values: CreateCardFormValues,
   options?: {
     readonly availableAbilityCodes?: ReadonlyArray<string>;
-    readonly availableTypeCodes?: ReadonlyArray<string>;
-    readonly availableRarityCodes?: ReadonlyArray<string>;
     readonly imageCandidate?: ImageFileCandidate | null;
     readonly imageDimensions?: ImageDimensions | null;
   }
@@ -394,10 +249,10 @@ export function validateCreateCardForm(
   const powerError = validateCardPower(values.power);
   if (powerError) errors.power = powerError;
 
-  const typeError = validateCardType(values.card_type, options?.availableTypeCodes);
+  const typeError = validateCardType(values.card_type);
   if (typeError) errors.card_type = typeError;
 
-  const rarityError = validateCardRarity(values.rarity, options?.availableRarityCodes);
+  const rarityError = validateCardRarity(values.rarity);
   if (rarityError) errors.rarity = rarityError;
 
   const abilityError = validateAbilityCode(values.ability_code, options?.availableAbilityCodes);
@@ -413,8 +268,7 @@ export function validateCreateCardForm(
     }
   }
 
-  const valid = Object.keys(errors).length === 0;
-  if (!valid) {
+  if (Object.keys(errors).length > 0) {
     return { valid: false, errors };
   }
 
