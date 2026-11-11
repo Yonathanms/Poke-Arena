@@ -9,6 +9,7 @@ import { AlertBanner } from "../../../../shared/components/AlertBanner";
 import { CardForm } from "../components/CardForm";
 import { CardPreviewCard } from "../components/CardPreviewCard";
 import { useAbilities } from "../hooks/useAbilities";
+import { useCardMetadata } from "../hooks/useCardMetadata";
 import { useCreateCard } from "../hooks/useCreateCard";
 
 export function CreateCardScreen(): React.ReactElement {
@@ -18,6 +19,8 @@ export function CreateCardScreen(): React.ReactElement {
     error: abilitiesError,
     reload: reloadAbilities,
   } = useAbilities();
+
+  const { types, rarities } = useCardMetadata();
 
   const {
     values,
@@ -78,6 +81,8 @@ export function CreateCardScreen(): React.ReactElement {
           values={values}
           errors={errors}
           imageSelection={imageSelection}
+          types={types}
+          rarities={rarities}
           abilities={abilities}
           isLoadingAbilities={isLoadingAbilities}
           abilitiesError={abilitiesError}

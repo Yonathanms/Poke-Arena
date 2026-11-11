@@ -5,32 +5,12 @@
 import type {
   AllowedImageMimeType,
   CardFieldErrors,
-  CardRarity,
-  CardType,
   CardValidationResult,
   CreateCardFormValues,
   ImageDimensions,
   ImageFileCandidate,
   ValidatedCardImageSelection,
 } from "../types/card-admin.types";
-
-/** Códigos canónicos de tipos elementales aceptados por el dominio. */
-export const CARD_TYPES: readonly CardType[] = [
-  "FUE",
-  "AGU",
-  "PLA",
-  "ELE",
-  "PSI",
-  "LUC",
-];
-
-/** Códigos canónicos de rareza aceptados por el dominio. */
-export const CARD_RARITIES: readonly CardRarity[] = [
-  "COMUN",
-  "POCO_COMUN",
-  "RARA",
-  "LEGENDARIA",
-];
 
 /** Formatos MIME de imagen permitidos (PNG, JPG/JPEG, WebP). */
 export const ALLOWED_IMAGE_MIME_TYPES: readonly AllowedImageMimeType[] = [
@@ -96,24 +76,18 @@ export function validateCardPower(power: number): string | null {
   return null;
 }
 
-export function isValidCardType(value: string): value is CardType {
-  return (CARD_TYPES as readonly string[]).includes(value);
-}
-
 export function validateCardType(cardType: string): string | null {
-  if (!isValidCardType(cardType)) {
-    return "Selecciona un tipo elemental válido (FUE, AGU, PLA, ELE, PSI, LUC).";
+  const trimmed = typeof cardType === "string" ? cardType.trim() : "";
+  if (!trimmed) {
+    return "Debes seleccionar un tipo elemental.";
   }
   return null;
 }
 
-export function isValidCardRarity(value: string): value is CardRarity {
-  return (CARD_RARITIES as readonly string[]).includes(value);
-}
-
 export function validateCardRarity(rarity: string): string | null {
-  if (!isValidCardRarity(rarity)) {
-    return "Selecciona una rareza válida (COMUN, POCO_COMUN, RARA, LEGENDARIA).";
+  const trimmed = typeof rarity === "string" ? rarity.trim() : "";
+  if (!trimmed) {
+    return "Debes seleccionar una rareza.";
   }
   return null;
 }

@@ -428,6 +428,16 @@ def cmd_dump_images(args: argparse.Namespace) -> None:
     run_cmd(cmd, cwd=ROOT_DIR)
 
 
+def cmd_poblar_tipos_rarezas(args: argparse.Namespace) -> None:
+    """Puebla o actualiza de forma idempotente las tablas de Tipos y Rarezas en PostgreSQL."""
+    py = get_backend_python()
+    script = ROOT_DIR / "resources" / "scripts" / "poblar_tipos_y_rarezas.py"
+    cmd = [str(py), str(script)]
+    if getattr(args, "url", None):
+        cmd.extend(["--url", str(args.url)])
+    run_cmd(cmd, cwd=ROOT_DIR)
+
+
 def cmd_generar_cartas(args: argparse.Namespace) -> None:
     """Ensambla arte 5:7 e inyecta N cartas aleatorias en PostgreSQL, GridFS y MongoDB."""
     py = get_backend_python()
@@ -460,6 +470,7 @@ Comandos habituales:
   python manage.py dbs                # Inicia Postgres y MongoDB en Docker
   python manage.py dev-backend        # Corre la API FastAPI en local (:8000)
   python manage.py dev-frontend       # Corre React / Vite en local (:5173)
+  python manage.py poblar-tipos       # Puebla o actualiza tablas catalog_card_types y catalog_card_rarities
   python manage.py generar_cartas 25  # Ensambla arte 5:7 e inyecta N cartas en la base de datos
   python manage.py dump-images        # Vuelca las imágenes de cartas de MongoDB GridFS a disco
   python manage.py lint               # Revisa estilo y tipos (Ruff + Mypy)
@@ -504,6 +515,14 @@ Comandos habituales:
     sub_dump.add_argument("--output-dir", "-o", type=Path, default=None, help="Directorio destino personalizado")
     sub_dump.add_argument("--bucket", "-b", type=str, default="card_assets", help="Bucket GridFS (default: card_assets)")
     sub_dump.set_defaults(func=cmd_dump_images)
+
+    sub_types = sub.add_parser(
+        "poblar-tipos",
+        aliases=["seed-types", "poblar_tipos", "seed-rarezas"],
+        help="Puebla y actualiza de manera idempotente los catálogos de tipos y rarezas en PostgreSQL",
+    )
+    sub_types.add_argument("--url", type=str, default=None, help="DATABASE_URL personalizada para la conexión")
+    sub_types.set_defaults(func=cmd_poblar_tipos_rarezas)
 
     sub_gen = sub.add_parser(
         "generar_cartas",

@@ -9,23 +9,24 @@ import type {
   AbilityOptionDTO,
   CardFieldErrors,
   CardRarity,
+  CardRarityOptionDTO,
   CardType,
+  CardTypeOptionDTO,
   CreateCardFormValues,
   ValidatedCardImageSelection,
 } from "../types/card-admin.types";
 import {
-  CARD_RARITIES,
-  CARD_TYPES,
   CARD_VALIDATION_CONSTRAINTS,
   normalizeCardName,
 } from "../validation/card-validation";
 import { CardImageUploader } from "./CardImageUploader";
-import { CARD_RARITY_VISUAL_META, CARD_TYPE_VISUAL_META } from "./CardPreviewCard";
 
 export interface CardFormProps {
   readonly values: CreateCardFormValues;
   readonly errors: CardFieldErrors;
   readonly imageSelection: ValidatedCardImageSelection | null;
+  readonly types?: readonly CardTypeOptionDTO[];
+  readonly rarities?: readonly CardRarityOptionDTO[];
   readonly abilities: readonly AbilityOptionDTO[];
   readonly isLoadingAbilities: boolean;
   readonly abilitiesError: string | null;
@@ -48,6 +49,8 @@ export function CardForm({
   values,
   errors,
   imageSelection,
+  types,
+  rarities,
   abilities,
   isLoadingAbilities,
   abilitiesError,
@@ -202,11 +205,15 @@ export function CardForm({
             onChange={(e) => onChange("card_type", e.currentTarget.value as CardType)}
             className="w-full rounded-xl border border-arena-border bg-arena-surface/90 px-4 py-2.5 text-sm text-white transition focus:border-arena-accent focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
           >
-            {CARD_TYPES.map((typeCode) => (
-              <option key={typeCode} value={typeCode}>
-                {typeCode} — {CARD_TYPE_VISUAL_META[typeCode].label}
-              </option>
-            ))}
+            {types && types.length > 0 ? (
+              types.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.code} — {t.name}
+                </option>
+              ))
+            ) : (
+              <option value={values.card_type}>{values.card_type}</option>
+            )}
           </select>
           {errors.card_type && (
             <p className="text-xs font-medium text-red-300">{errors.card_type}</p>
@@ -227,14 +234,15 @@ export function CardForm({
             onChange={(e) => onChange("rarity", e.currentTarget.value as CardRarity)}
             className="w-full rounded-xl border border-arena-border bg-arena-surface/90 px-4 py-2.5 text-sm text-white transition focus:border-arena-accent focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60"
           >
-            {CARD_RARITIES.map((rarityCode) => {
-              const meta = CARD_RARITY_VISUAL_META[rarityCode];
-              return (
-                <option key={rarityCode} value={rarityCode}>
-                  {rarityCode} — {meta.label} ({meta.stars})
+            {rarities && rarities.length > 0 ? (
+              rarities.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code} — {r.name}
                 </option>
-              );
-            })}
+              ))
+            ) : (
+              <option value={values.rarity}>{values.rarity}</option>
+            )}
           </select>
           {errors.rarity && <p className="text-xs font-medium text-red-300">{errors.rarity}</p>}
         </div>

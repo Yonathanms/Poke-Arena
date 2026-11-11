@@ -6,11 +6,11 @@
  * y `CARD_CREATION_FRONTEND_HANDOFF.md`).
  */
 
-/** Códigos canónicos de tipos elementales aceptados por PostgreSQL y el dominio. */
-export type CardType = "FUE" | "AGU" | "PLA" | "ELE" | "PSI" | "LUC";
+/** Códigos de tipos elementales sincronizados dinámicamente con la base de datos SQL. */
+export type CardType = "FUE" | "AGU" | "PLA" | "ELE" | "PSI" | "LUC" | (string & {});
 
-/** Códigos canónicos de rareza aceptados por PostgreSQL y el dominio. */
-export type CardRarity = "COMUN" | "POCO_COMUN" | "RARA" | "LEGENDARIA";
+/** Códigos de rareza sincronizados dinámicamente con la base de datos SQL. */
+export type CardRarity = "COMUN" | "POCO_COMUN" | "RARA" | "LEGENDARIA" | (string & {});
 
 /** Formatos de archivo de imagen admitidos por el procesador Pillow del backend. */
 export type AllowedImageMimeType = "image/png" | "image/jpeg" | "image/webp";
@@ -23,6 +23,23 @@ export type CardImageStatus = "READY";
  * La lista viene ordenada por `code` e incluye `HAB-000` ("Sin Habilidad").
  */
 export interface AbilityOptionDTO {
+  readonly code: string;
+  readonly name: string;
+}
+
+/**
+ * Elemento devuelto por `GET /api/v1/content/types` (`TipoSeleccionable`).
+ */
+export interface CardTypeOptionDTO {
+  readonly code: string;
+  readonly name: string;
+  readonly description?: string | null;
+}
+
+/**
+ * Elemento devuelto por `GET /api/v1/content/rarities` (`RarezaSeleccionable`).
+ */
+export interface CardRarityOptionDTO {
   readonly code: string;
   readonly name: string;
 }

@@ -57,6 +57,14 @@ class CartasRepositoryPort(Protocol):
         """Lee la cadena en un snapshot SQL. Una repetición indica un ciclo."""
         ...
 
+    async def listar_tipos(self) -> list[tuple[str, str, str | None]]:
+        """Lee códigos, nombres y descripciones de tipos existentes."""
+        ...
+
+    async def listar_rarezas(self) -> list[tuple[str, str]]:
+        """Lee códigos y nombres de rarezas existentes."""
+        ...
+
 
 # ------------------------------------------------------------------------------
 # Puerto para Búsqueda y Consulta NoSQL de Cartas

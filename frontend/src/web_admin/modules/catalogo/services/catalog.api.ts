@@ -25,6 +25,8 @@ import { ensureAuthHttpBridgeConfigured } from "../../auth/services/auth.api";
 import type {
   AbilityOptionDTO,
   CardCreatedResponseDTO,
+  CardRarityOptionDTO,
+  CardTypeOptionDTO,
   CreateCardMultipartInput,
 } from "../types/card-admin.types";
 import type { LocationResponseDTO } from "../types/location-admin.types";
@@ -35,6 +37,8 @@ import {
 } from "../validation/card-validation";
 
 const ABILITIES_ENDPOINT = "/content/abilities";
+const TYPES_ENDPOINT = "/content/types";
+const RARITIES_ENDPOINT = "/content/rarities";
 const CARDS_ENDPOINT = "/content/cards";
 
 /** Opciones de transporte inyectables para pruebas unitarias y cancelación. */
@@ -129,6 +133,65 @@ export async function fetchSelectableAbilities(
       Object.freeze({
         code: item.code,
         name: item.name,
+      })
+    )
+  );
+}
+
+/**
+ * Consulta la lista oficial de tipos elementales de cartas (`GET /api/v1/content/types`).
+ */
+export async function fetchCardTypes(
+  options?: CatalogServiceRequestOptions
+): Promise<readonly CardTypeOptionDTO[]> {
+  ensureAuthHttpBridgeConfigured();
+
+  const response = await requestApiWithMeta<unknown>(TYPES_ENDPOINT, {
+    method: "GET",
+    requiresAuth: true,
+    fetchImpl: options?.fetchImpl,
+    signal: options?.signal,
+  });
+
+  if (!Array.isArray(response.data)) {
+    return Object.freeze([]);
+  }
+
+  return Object.freeze(
+    response.data.map((item: any) =>
+      Object.freeze({
+        code: String(item.code ?? ""),
+        name: String(item.name ?? ""),
+        description: item.description ? String(item.description) : null,
+      })
+    )
+  );
+}
+
+/**
+ * Consulta la lista oficial de rarezas de cartas (`GET /api/v1/content/rarities`).
+ */
+export async function fetchCardRarities(
+  options?: CatalogServiceRequestOptions
+): Promise<readonly CardRarityOptionDTO[]> {
+  ensureAuthHttpBridgeConfigured();
+
+  const response = await requestApiWithMeta<unknown>(RARITIES_ENDPOINT, {
+    method: "GET",
+    requiresAuth: true,
+    fetchImpl: options?.fetchImpl,
+    signal: options?.signal,
+  });
+
+  if (!Array.isArray(response.data)) {
+    return Object.freeze([]);
+  }
+
+  return Object.freeze(
+    response.data.map((item: any) =>
+      Object.freeze({
+        code: String(item.code ?? ""),
+        name: String(item.name ?? ""),
       })
     )
   );

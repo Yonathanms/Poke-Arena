@@ -79,6 +79,7 @@ def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
     return modulo.crear_router(
         administrador, crear_servicio_crear_carta, listar_habilidades,
+        tipos=listar_tipos, rarezas=listar_rarezas,
         jugador=jugador, miniatura=recuperar_miniatura_carta,
         imagen_grande=recuperar_imagen_carta,
     )
@@ -159,6 +160,26 @@ async def listar_habilidades() -> list[tuple[str, str]]:
         return list(filas)
 
 
+async def listar_tipos() -> list[tuple[str, str, str | None]]:
+    """Compone la lectura de tipos con el repositorio y la sesión oficiales."""
+    from src.database.postgresql.connection import transactional_session
+
+    async with transactional_session() as sesion:
+        repo = crear_repositorio_cartas(sesion)
+        filas = await repo.listar_tipos()
+        return list(filas)
+
+
+async def listar_rarezas() -> list[tuple[str, str]]:
+    """Compone la lectura de rarezas con el repositorio y la sesión oficiales."""
+    from src.database.postgresql.connection import transactional_session
+
+    async with transactional_session() as sesion:
+        repo = crear_repositorio_cartas(sesion)
+        filas = await repo.listar_rarezas()
+        return list(filas)
+
+
 __all__ = [
     "componer_procesador_outbox",
     "crear_almacen_imagenes",
@@ -166,6 +187,8 @@ __all__ = [
     "crear_repositorio_cartas",
     "crear_servicio_crear_carta",
     "listar_habilidades",
+    "listar_rarezas",
+    "listar_tipos",
     "modelos_persistencia",
     "router_cartas",
     "router_ubicaciones",
