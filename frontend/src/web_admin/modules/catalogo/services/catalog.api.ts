@@ -251,25 +251,34 @@ const LOCATIONS_ENDPOINT = "/content/locations";
 
 /**
  * Envía una solicitud de creación de ubicación (`POST /api/v1/content/locations`) usando
- * `multipart/form-data`.
+ * `multipart/form-data`, el Bearer de la sesión administrativa activa e `Idempotency-Key`.
  */
 export async function createLocation(
   formData: FormData,
   idempotencyKey: string,
-  token = "admin-token-placeholder"
+  options?: CatalogServiceRequestOptions
 ): Promise<LocationResponseDTO> {
-  const response = await fetch(`/api/v1${LOCATIONS_ENDPOINT}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: formData,
-  });
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-    throw new Error(typeof err["detail"] === "string" ? err["detail"] : `Error ${response.status}`);
+  ensureAuthHttpBridgeConfigured();
+
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    throw new ApiHttpError({
+      status: 422,
+      code: "idempotencia_invalida",
+      detail:
+        "Se requiere una clave de idempotencia válida (1 a 128 caracteres ASCII visibles sin comas).",
+      title: "Unprocessable Entity",
+    });
   }
-  return response.json() as Promise<LocationResponseDTO>;
+
+  const response = await requestApiWithMeta<LocationResponseDTO>(LOCATIONS_ENDPOINT, {
+    method: "POST",
+    requiresAuth: true,
+    idempotencyKey,
+    body: formData,
+    fetchImpl: options?.fetchImpl,
+    signal: options?.signal,
+  });
+
+  return response.data;
 }
 
