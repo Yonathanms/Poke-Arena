@@ -151,6 +151,35 @@ class ContadorCartaORM(Base):
     last_value: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
 
+class TipoCartaORM(Base):
+    """Catálogo maestro de tipos elementales de cartas."""
+
+    __tablename__ = "catalog_card_types"
+    __table_args__ = (
+        PrimaryKeyConstraint("code", name="pk_catalog_card_types"),
+        Index("ix_catalog_card_types_name", "name"),
+    )
+
+    code: Mapped[str] = mapped_column(String(10))
+    name: Mapped[str] = mapped_column(String(50))
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class RarezaCartaORM(Base):
+    """Catálogo maestro de rarezas de cartas."""
+
+    __tablename__ = "catalog_card_rarities"
+    __table_args__ = (
+        PrimaryKeyConstraint("code", name="pk_catalog_card_rarities"),
+        Index("ix_catalog_card_rarities_name", "name"),
+    )
+
+    code: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class CartaORM(Base):
     """Carta SQL existente; la identidad y fechas deben ser provistas por el consumidor."""
 
@@ -162,13 +191,13 @@ class CartaORM(Base):
         CheckConstraint("cost BETWEEN 0 AND 10", name="ck_catalog_cards_cost"),
         CheckConstraint("power BETWEEN -20 AND 20", name="ck_catalog_cards_power"),
         CheckConstraint("length(btrim(name)) BETWEEN 1 AND 100", name="ck_catalog_cards_name"),
-        CheckConstraint(
-            "card_type IN ('FUE', 'AGU', 'PLA', 'ELE', 'PSI', 'LUC')",
-            name="ck_catalog_cards_type",
+        ForeignKeyConstraint(
+            ["card_type"], ["catalog_card_types.code"],
+            name="fk_catalog_cards_card_type", onupdate="CASCADE", ondelete="RESTRICT",
         ),
-        CheckConstraint(
-            "rarity IN ('COMUN', 'POCO_COMUN', 'RARA', 'LEGENDARIA')",
-            name="ck_catalog_cards_rarity",
+        ForeignKeyConstraint(
+            ["rarity"], ["catalog_card_rarities.code"],
+            name="fk_catalog_cards_rarity", onupdate="CASCADE", ondelete="RESTRICT",
         ),
         CheckConstraint(
             "code = 'PKA-' || card_type || '-' || right(code, 3) "

@@ -99,6 +99,21 @@ class HabilidadSeleccionable(BaseModel):
     name: str
 
 
+class TipoSeleccionable(BaseModel):
+    """Identificador, nombre y descripción de un tipo elemental para el formulario."""
+
+    code: str
+    name: str
+    description: str | None = None
+
+
+class RarezaSeleccionable(BaseModel):
+    """Identificador y nombre de una rareza para el formulario."""
+
+    code: str
+    name: str
+
+
 # ------------------------------------------------------------------------------
 # DTOs para Consulta y Búsqueda de Cartas (Catálogo / Jugadores)
 # ------------------------------------------------------------------------------

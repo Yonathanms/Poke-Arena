@@ -210,3 +210,25 @@ class SqlCartaRepository(CartasRepositoryPort):
         except DBAPIError as error:
             raise _traducir_error(error) from None
         return [(codigo, nombre) for codigo, nombre in filas.tuples()]
+
+    async def listar_tipos(self) -> list[tuple[str, str, str | None]]:
+        """Lee códigos, nombres y descripciones de tipos existentes."""
+        self._exigir_transaccion()
+        try:
+            filas = await self._session.execute(
+                text("SELECT code, name, description FROM public.catalog_card_types ORDER BY code")
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
+        return [(str(c), str(n), str(d) if d is not None else None) for c, n, d in filas.tuples()]
+
+    async def listar_rarezas(self) -> list[tuple[str, str]]:
+        """Lee códigos y nombres de rarezas existentes."""
+        self._exigir_transaccion()
+        try:
+            filas = await self._session.execute(
+                text("SELECT code, name FROM public.catalog_card_rarities ORDER BY code")
+            )
+        except DBAPIError as error:
+            raise _traducir_error(error) from None
+        return [(str(c), str(n)) for c, n in filas.tuples()]

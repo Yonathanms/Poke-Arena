@@ -45,7 +45,9 @@ from .cartas_dtos import (
     CartaSearchResponseDTO,
     HabilidadSeleccionable,
     RarezaCarta,
+    RarezaSeleccionable,
     TipoCarta,
+    TipoSeleccionable,
     esquema_multipart,
 )
 from .cartas_validaciones import validar_parametros_busqueda
@@ -157,6 +159,8 @@ def crear_router(
     administrador: Callable[..., Awaitable[str]],
     servicio: Callable[[], CrearCarta],
     habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
+    tipos: Callable[[], Awaitable[list[tuple[str, str, str | None]]]] | None = None,
+    rarezas: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None,
     jugador: Callable[..., Awaitable[Any]] | None = None,
     miniatura: Callable[[str], Awaitable[bytes | None]] | None = None,
     imagen_grande: Callable[[str], Awaitable[bytes | None]] | None = None,
@@ -244,6 +248,52 @@ def crear_router(
             ]
         except ErrorPersistencia:
             raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
+
+    if tipos is not None:
+        @router.get(
+            "/types",
+            operation_id="listCardTypes",
+            summary="Listar tipos elementales de cartas",
+            responses=respuestas_documentadas(
+                {
+                    401: "Sesión requerida",
+                    403: "Rol insuficiente",
+                    503: "Catálogo no disponible",
+                }
+            ),
+        )
+        async def listar_tipos_elementales(_: str = Depends(administrador)) -> list[TipoSeleccionable]:
+            """Devuelve los tipos elementales maestros disponibles para el formulario de creación."""
+            try:
+                return [
+                    TipoSeleccionable(code=codigo, name=nombre, description=descripcion)
+                    for codigo, nombre, descripcion in await tipos()
+                ]
+            except ErrorPersistencia:
+                raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
+
+    if rarezas is not None:
+        @router.get(
+            "/rarities",
+            operation_id="listCardRarities",
+            summary="Listar rarezas maestras de cartas",
+            responses=respuestas_documentadas(
+                {
+                    401: "Sesión requerida",
+                    403: "Rol insuficiente",
+                    503: "Catálogo no disponible",
+                }
+            ),
+        )
+        async def listar_rarezas_oficiales(_: str = Depends(administrador)) -> list[RarezaSeleccionable]:
+            """Devuelve las rarezas oficiales disponibles para el formulario de creación."""
+            try:
+                return [
+                    RarezaSeleccionable(code=codigo, name=nombre)
+                    for codigo, nombre in await rarezas()
+                ]
+            except ErrorPersistencia:
+                raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.") from None
 
     @router.post(
         "/cards",
