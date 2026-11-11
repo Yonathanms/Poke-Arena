@@ -19,6 +19,7 @@ import { AlertBanner } from "../../../../shared/components/AlertBanner";
 import { CardForm } from "../components/CardForm";
 import { CardPreviewCard } from "../components/CardPreviewCard";
 import { useAbilities } from "../hooks/useAbilities";
+import { useCardMetadata } from "../hooks/useCardMetadata";
 import {
   useCreateCard,
   type CreateCardController,
@@ -54,6 +55,8 @@ export function CreateCardScreen({
     error: abilitiesError,
     reload: reloadAbilities,
   } = useAbilities({ fetchImpl });
+
+  const { types, rarities } = useCardMetadata({ fetchImpl });
 
   const {
     status,
@@ -223,6 +226,8 @@ export function CreateCardScreen({
               isSubmitting={isSubmitting}
               isEditingLocked={isEditingLocked}
               activeIdempotencyKey={activeIdempotencyKey}
+              types={types}
+              rarities={rarities}
               abilities={abilities}
               isLoadingAbilities={isLoadingAbilities}
               hasLoadedAbilities={hasLoadedAbilities}

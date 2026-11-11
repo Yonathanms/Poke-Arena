@@ -66,7 +66,7 @@ export interface CardTypeVisualMeta {
  * Mapa estático de estilos Tailwind por tipo elemental (`FUE`, `AGU`, `PLA`, `ELE`, `PSI`, `LUC`).
  * Se declaran cadenas completas para que el compilador JIT de Tailwind CSS las incluya en el bundle.
  */
-export const CARD_TYPE_VISUAL_META: Readonly<Record<CardType, CardTypeVisualMeta>> = Object.freeze({
+export const CARD_TYPE_VISUAL_META: Readonly<Record<string, CardTypeVisualMeta>> = Object.freeze({
   FUE: {
     code: "FUE",
     label: "Fuego",
@@ -133,34 +133,29 @@ export interface CardRarityVisualMeta {
   readonly code: CardRarity;
   readonly label: string;
   readonly badgeClass: string;
-  readonly stars: string;
 }
 
-export const CARD_RARITY_VISUAL_META: Readonly<Record<CardRarity, CardRarityVisualMeta>> =
+export const CARD_RARITY_VISUAL_META: Readonly<Record<string, CardRarityVisualMeta>> =
   Object.freeze({
     COMUN: {
       code: "COMUN",
       label: "Común",
       badgeClass: "border-slate-500/40 bg-slate-500/15 text-slate-200",
-      stars: "●",
     },
     POCO_COMUN: {
       code: "POCO_COMUN",
       label: "Poco Común",
       badgeClass: "border-emerald-500/40 bg-emerald-500/15 text-emerald-200",
-      stars: "◆",
     },
     RARA: {
       code: "RARA",
       label: "Rara",
       badgeClass: "border-blue-400/50 bg-blue-500/20 text-blue-200",
-      stars: "★",
     },
     LEGENDARIA: {
       code: "LEGENDARIA",
       label: "Legendaria",
       badgeClass: "border-amber-400/60 bg-amber-500/20 text-amber-200",
-      stars: "✦✦",
     },
   });
 
@@ -304,7 +299,7 @@ export function CardPreviewCard({
                   {displayName}
                 </h4>
                 <p className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                  {rarityMeta.stars} {rarityMeta.label}
+                  {rarityMeta.label}
                 </p>
               </div>
             </div>

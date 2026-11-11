@@ -31,20 +31,19 @@ import type {
   AbilityOptionDTO,
   CardFieldErrors,
   CardRarity,
+  CardRarityOptionDTO,
   CardType,
+  CardTypeOptionDTO,
   CreateCardFormValues,
   ValidatedCardImageSelection,
 } from "../types/card-admin.types";
 import {
-  CARD_RARITIES,
-  CARD_TYPES,
   CARD_VALIDATION_CONSTRAINTS,
   normalizeCardName,
   type ImageDimensionsDecoder,
   type ObjectUrlManager,
 } from "../validation/card-validation";
 import { CardImageUploader } from "./CardImageUploader";
-import { CARD_RARITY_VISUAL_META, CARD_TYPE_VISUAL_META } from "./CardPreviewCard";
 
 export interface CardFormProps {
   readonly values: CreateCardFormValues;
@@ -56,6 +55,8 @@ export interface CardFormProps {
   readonly isSubmitting: boolean;
   readonly isEditingLocked: boolean;
   readonly activeIdempotencyKey: string | null;
+  readonly types?: readonly CardTypeOptionDTO[];
+  readonly rarities?: readonly CardRarityOptionDTO[];
   readonly abilities: readonly AbilityOptionDTO[];
   readonly isLoadingAbilities: boolean;
   readonly hasLoadedAbilities: boolean;
@@ -88,6 +89,8 @@ export function CardForm({
   isSubmitting,
   isEditingLocked,
   activeIdempotencyKey,
+  types,
+  rarities,
   abilities,
   isLoadingAbilities,
   hasLoadedAbilities,
@@ -347,14 +350,15 @@ export function CardForm({
                 : "border-arena-border focus:border-arena-accent focus:ring-blue-500/30"
             }`}
           >
-            {CARD_TYPES.map((typeCode) => {
-              const meta = CARD_TYPE_VISUAL_META[typeCode];
-              return (
-                <option key={typeCode} value={typeCode}>
-                  {typeCode} — {meta.label}
+            {types && types.length > 0 ? (
+              types.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.code} — {t.name}
                 </option>
-              );
-            })}
+              ))
+            ) : (
+              <option value={values.card_type}>{values.card_type}</option>
+            )}
           </select>
 
           {fieldErrors.card_type && (
@@ -394,14 +398,15 @@ export function CardForm({
                 : "border-arena-border focus:border-arena-accent focus:ring-blue-500/30"
             }`}
           >
-            {CARD_RARITIES.map((rarityCode) => {
-              const meta = CARD_RARITY_VISUAL_META[rarityCode];
-              return (
-                <option key={rarityCode} value={rarityCode}>
-                  {rarityCode} — {meta.label} ({meta.stars})
+            {rarities && rarities.length > 0 ? (
+              rarities.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code} — {r.name}
                 </option>
-              );
-            })}
+              ))
+            ) : (
+              <option value={values.rarity}>{values.rarity}</option>
+            )}
           </select>
 
           {fieldErrors.rarity && (

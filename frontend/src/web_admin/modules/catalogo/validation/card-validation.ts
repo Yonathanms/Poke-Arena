@@ -9,31 +9,11 @@
 import type {
   AllowedImageMimeType,
   CardFieldErrors,
-  CardRarity,
-  CardType,
   CardValidationResult,
   CreateCardFormValues,
   ImageDimensions,
   ImageFileCandidate,
 } from "../types/card-admin.types";
-
-/** Códigos canónicos de tipos elementales aceptados por PostgreSQL y el dominio. */
-export const CARD_TYPES: readonly CardType[] = Object.freeze([
-  "FUE",
-  "AGU",
-  "PLA",
-  "ELE",
-  "PSI",
-  "LUC",
-]);
-
-/** Códigos canónicos de rareza aceptados por PostgreSQL y el dominio. */
-export const CARD_RARITIES: readonly CardRarity[] = Object.freeze([
-  "COMUN",
-  "POCO_COMUN",
-  "RARA",
-  "LEGENDARIA",
-]);
 
 /** Formatos MIME de imagen permitidos en el cliente y servidor. */
 export const ALLOWED_IMAGE_MIME_TYPES: readonly AllowedImageMimeType[] = Object.freeze([
@@ -61,8 +41,6 @@ export const CARD_VALIDATION_CONSTRAINTS = Object.freeze({
   IMAGE_ASPECT_HEIGHT: 7,
 });
 
-const CARD_TYPE_SET: ReadonlySet<string> = new Set(CARD_TYPES);
-const CARD_RARITY_SET: ReadonlySet<string> = new Set(CARD_RARITIES);
 const ALLOWED_MIME_SET: ReadonlySet<string> = new Set(ALLOWED_IMAGE_MIME_TYPES);
 
 /**
@@ -124,29 +102,37 @@ export function validateCardPower(power: number): string | null {
 }
 
 /**
- * Verifica que el tipo elemental pertenezca al conjunto canónico (`FUE`, `AGU`, `PLA`, `ELE`, `PSI`, `LUC`).
+ * Valida que se haya seleccionado un tipo elemental (no vacío) y opcionalmente
+ * verifica que forme parte de los tipos disponibles en el catálogo dinámico.
  */
-export function isValidCardType(value: string): value is CardType {
-  return CARD_TYPE_SET.has(value);
-}
-
-export function validateCardType(cardType: string): string | null {
-  if (!isValidCardType(cardType)) {
-    return "Selecciona un tipo elemental válido (FUE, AGU, PLA, ELE, PSI, LUC).";
+export function validateCardType(
+  cardType: string,
+  availableTypes?: ReadonlyArray<string>
+): string | null {
+  const trimmed = typeof cardType === "string" ? cardType.trim() : "";
+  if (!trimmed) {
+    return "Debes seleccionar un tipo elemental.";
+  }
+  if (availableTypes && availableTypes.length > 0 && !availableTypes.includes(trimmed)) {
+    return "El tipo elemental seleccionado no existe en el catálogo actual.";
   }
   return null;
 }
 
 /**
- * Verifica que la rareza pertenezca al conjunto canónico (`COMUN`, `POCO_COMUN`, `RARA`, `LEGENDARIA`).
+ * Valida que se haya seleccionado una rareza (no vacía) y opcionalmente
+ * verifica que forme parte de las rarezas disponibles en el catálogo dinámico.
  */
-export function isValidCardRarity(value: string): value is CardRarity {
-  return CARD_RARITY_SET.has(value);
-}
-
-export function validateCardRarity(rarity: string): string | null {
-  if (!isValidCardRarity(rarity)) {
-    return "Selecciona una rareza válida (COMUN, POCO_COMUN, RARA, LEGENDARIA).";
+export function validateCardRarity(
+  rarity: string,
+  availableRarities?: ReadonlyArray<string>
+): string | null {
+  const trimmed = typeof rarity === "string" ? rarity.trim() : "";
+  if (!trimmed) {
+    return "Debes seleccionar una rareza.";
+  }
+  if (availableRarities && availableRarities.length > 0 && !availableRarities.includes(trimmed)) {
+    return "La rareza seleccionada no existe en el catálogo actual.";
   }
   return null;
 }
@@ -391,6 +377,8 @@ export function validateCreateCardForm(
   values: CreateCardFormValues,
   options?: {
     readonly availableAbilityCodes?: ReadonlyArray<string>;
+    readonly availableTypeCodes?: ReadonlyArray<string>;
+    readonly availableRarityCodes?: ReadonlyArray<string>;
     readonly imageCandidate?: ImageFileCandidate | null;
     readonly imageDimensions?: ImageDimensions | null;
   }
@@ -406,10 +394,10 @@ export function validateCreateCardForm(
   const powerError = validateCardPower(values.power);
   if (powerError) errors.power = powerError;
 
-  const typeError = validateCardType(values.card_type);
+  const typeError = validateCardType(values.card_type, options?.availableTypeCodes);
   if (typeError) errors.card_type = typeError;
 
-  const rarityError = validateCardRarity(values.rarity);
+  const rarityError = validateCardRarity(values.rarity, options?.availableRarityCodes);
   if (rarityError) errors.rarity = rarityError;
 
   const abilityError = validateAbilityCode(values.ability_code, options?.availableAbilityCodes);
