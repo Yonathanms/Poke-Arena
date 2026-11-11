@@ -69,11 +69,11 @@ export function VistaPrincipalScreen({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen poke-arena-bg text-slate-100 flex flex-col items-center justify-center p-6">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-400 font-medium">
-            Consultando perfil y estadísticas en PostgreSQL...
+          <p className="text-sm text-slate-300 font-medium">
+            Cargando perfil y estadísticas de entrenador...
           </p>
         </div>
       </div>
@@ -82,25 +82,25 @@ export function VistaPrincipalScreen({
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen poke-arena-bg text-slate-100 flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-lg">
           <AlertBanner
             variant="error"
             title="Error de carga de perfil"
-            description={error || "No fue posible recuperar el perfil del jugador desde PostgreSQL."}
+            description={error || "No fue posible recuperar el perfil del jugador en este momento."}
           />
           <div className="mt-4 flex justify-center gap-3">
             <button
               type="button"
               onClick={() => void reload()}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold"
+              className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl px-5 py-2.5 text-xs shadow-lg shadow-blue-600/25 border border-blue-400/30 transition-all"
             >
               Reintentar
             </button>
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+              className="bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2 text-xs font-semibold transition-all"
             >
               Cerrar Sesión
             </button>
@@ -111,7 +111,7 @@ export function VistaPrincipalScreen({
   }
 
   return (
-    <div className="min-h-screen bg-arena-bg text-slate-100 p-4 sm:p-8">
+    <div className="min-h-screen poke-arena-bg text-slate-100 p-4 sm:p-8">
       <div className="max-w-5xl mx-auto flex flex-col gap-6">
         {/* Cabecera con datos de cuenta y logout */}
         <ProfileHeader
@@ -121,15 +121,15 @@ export function VistaPrincipalScreen({
         />
 
         {/* Navegación por pestañas */}
-        <div className="flex items-center gap-2 border-b border-arena-border/60 pb-3 flex-wrap">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-3 flex-wrap">
           <button
             type="button"
             onClick={() => setActiveTab("perfil")}
             data-testid="tab-player-profile"
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "perfil"
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
             }`}
           >
             <User className="w-4 h-4" />
@@ -142,13 +142,13 @@ export function VistaPrincipalScreen({
             data-testid="tab-player-catalog"
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "catalogo"
-                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
-                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
             }`}
           >
             <BookOpen className="w-4 h-4" />
             <span>Catálogo & Mi Colección</span>
-            <span className="px-1.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-400/40 text-[10px] font-bold">
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 text-[10px] font-bold">
               Explorar
             </span>
           </button>
@@ -159,8 +159,8 @@ export function VistaPrincipalScreen({
             data-testid="tab-player-decks"
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === "decks"
-                ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20"
-                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -168,7 +168,7 @@ export function VistaPrincipalScreen({
             {!decksLoading && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                 activeTab === "decks"
-                  ? "bg-violet-900/60 text-violet-200 border border-violet-400/40"
+                  ? "bg-blue-950/60 text-blue-200 border border-blue-300/40"
                   : "bg-slate-700 text-slate-300"
               }`}>
                 {deckCount}
@@ -181,7 +181,7 @@ export function VistaPrincipalScreen({
         {activeTab === "perfil" ? (
           <div className="flex flex-col gap-6 animate-fade-in">
             <PlayerStatsGrid profile={profile} />
-            <DatabaseVerificationCard profile={profile} />
+            <DatabaseVerificationCard profile={profile} deckCount={deckCount} />
           </div>
         ) : activeTab === "catalogo" ? (
           <div className="animate-fade-in">

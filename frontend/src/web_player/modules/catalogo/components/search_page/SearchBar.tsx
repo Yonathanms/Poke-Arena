@@ -72,7 +72,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     onlyOwned;
 
   return (
-    <div className="w-full bg-arena-card border border-arena-border rounded-2xl p-4 md:p-6 shadow-xl backdrop-blur-sm">
+    <div className="w-full glass-card p-4 md:p-6">
       <form onSubmit={onSubmit} className="flex flex-col md:flex-row gap-3 items-stretch">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
@@ -83,7 +83,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Buscar por nombre (ej. Charizard, Pikachu), código o habilidad..."
-            className="w-full pl-11 pr-10 py-3.5 bg-arena-surface border border-arena-border text-slate-100 placeholder-slate-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm md:text-base"
+            className="w-full pl-11 pr-10 py-3 bg-[#090D16]/90 border border-white/10 text-slate-100 placeholder-slate-500 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm md:text-base"
           />
           {searchQuery && (
             <button
@@ -100,7 +100,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <button
           type="submit"
           disabled={isLoading}
-          className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] text-white font-medium rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 active:scale-[0.99] text-white font-semibold rounded-xl shadow-lg shadow-blue-600/25 border border-blue-400/30 flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           {isLoading ? (
             <>

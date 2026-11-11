@@ -14,6 +14,7 @@ import { AlertBanner } from "./AlertBanner";
 import { loginWithGoogleIdToken } from "../../web_admin/modules/auth/services/auth.api";
 import { ApiHttpError } from "../services/http-client";
 import type { ActiveSessionSnapshot } from "../../web_admin/modules/auth/types/auth.types";
+import pokemonIcon from "../../images/icons/icono_pokemon.png";
 
 export interface WelcomeLoginScreenProps {
   readonly onLoginSuccess: (session: ActiveSessionSnapshot) => void;
@@ -119,35 +120,29 @@ export function WelcomeLoginScreen({
   }, [googleScriptReady, clientId, handleGoogleCredentialResponse]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12 sm:px-6 bg-arena-bg text-slate-100">
+    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12 sm:px-6 poke-arena-bg text-slate-100">
       <div className="w-full max-w-md">
         {/* Cabecera / Identidad de Poké-Arena */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 shadow-lg shadow-blue-500/20 mb-4 border border-blue-400/30">
-            <svg
-              className="w-8 h-8 text-white"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#0F172A]/80 backdrop-blur-md p-2.5 shadow-[0_0_25px_rgba(59,130,246,0.25)] mb-4 border border-white/10">
+            <img
+              src={pokemonIcon}
+              alt="Poké-Arena"
+              className="w-14 h-14 object-contain drop-shadow-[0_0_16px_rgba(239,68,68,0.4)]"
+            />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             Poké-Arena
           </h1>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-slate-300">
             Plataforma Competitiva de Cartas Coleccionables
           </p>
         </div>
 
         {/* Tarjeta de Inicio de Sesión */}
-        <div className="rounded-2xl border border-arena-border bg-slate-900/90 backdrop-blur-md p-8 shadow-2xl shadow-black/50">
+        <div className="glass-card p-8">
           <div className="mb-6 text-center">
-            <h2 className="text-lg font-semibold text-slate-200">
+            <h2 className="text-lg font-semibold text-slate-100">
               Iniciar Sesión
             </h2>
             <p className="mt-1 text-xs text-slate-400">
@@ -215,9 +210,9 @@ export function WelcomeLoginScreen({
             )}
           </div>
 
-          <div className="mt-6 border-t border-slate-800/80 pt-4 text-center">
-            <p className="text-[11px] text-slate-500">
-              Sesión protegida y cifrada en memoria segura.
+          <div className="mt-6 border-t border-white/10 pt-4 text-center">
+            <p className="text-xs text-slate-400">
+              Ingresa para gestionar tu colección y competir en la arena
             </p>
           </div>
         </div>

@@ -13,7 +13,7 @@
  */
 
 import React from "react";
-import { Loader2, LogOut, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, LogOut, RefreshCw } from "lucide-react";
 import { AlertBanner } from "../../../../shared/components/AlertBanner";
 import { VistaPrincipalScreen } from "../../vista_principal/screens/VistaPrincipalScreen";
 import { PackOpeningExperience } from "../components/PackOpeningExperience";
@@ -22,6 +22,7 @@ import {
   useInitialPackOnboarding,
   type InitialPackOnboardingController,
 } from "../hooks/useInitialPackOnboarding";
+import pokemonIcon from "../../../../images/icons/icono_pokemon.png";
 
 export interface InitialPackOnboardingScreenProps {
   readonly onLogout: () => void | Promise<unknown>;
@@ -74,7 +75,7 @@ export function InitialPackOnboardingScreen({
   // ---------------------------------------------------------------------------
   if (isLoading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-arena-bg px-4 py-12 text-slate-100">
+      <div className="flex min-h-screen flex-col items-center justify-center poke-arena-bg px-4 py-12 text-slate-100">
         <div className="flex flex-col items-center gap-4 text-center">
           <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-500/40 bg-gradient-to-tr from-blue-600/30 to-indigo-600/20 shadow-xl shadow-blue-500/20">
             <Loader2 className="h-8 w-8 animate-spin text-blue-400" aria-hidden="true" />
@@ -82,8 +83,8 @@ export function InitialPackOnboardingScreen({
           <h2 className="text-xl font-bold tracking-tight text-white">
             Preparando tu colección inicial
           </h2>
-          <p className="max-w-xs text-xs text-slate-400">
-            Consultando tu paquete de bienvenida en el servidor de Poké-Arena...
+          <p className="max-w-xs text-xs text-slate-300">
+            Preparando tu paquete de bienvenida de Poké-Arena...
           </p>
         </div>
       </div>
@@ -95,8 +96,8 @@ export function InitialPackOnboardingScreen({
   // ---------------------------------------------------------------------------
   if (phase === "ERROR" && backendState === null) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-arena-bg px-4 py-12 text-slate-100">
-        <div className="w-full max-w-lg rounded-2xl border border-arena-border bg-slate-900/90 p-6 shadow-2xl backdrop-blur-md">
+      <div className="flex min-h-screen flex-col items-center justify-center poke-arena-bg px-4 py-12 text-slate-100">
+        <div className="w-full max-w-lg glass-card p-6">
           <AlertBanner
             variant="error"
             title={error?.title || "Error en Colección Inicial"}
@@ -111,7 +112,7 @@ export function InitialPackOnboardingScreen({
               <button
                 type="button"
                 onClick={() => void refreshStatus()}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl px-5 py-2.5 text-xs shadow-lg shadow-blue-600/25 border border-blue-400/30 transition-all"
               >
                 <RefreshCw className="h-4 w-4" aria-hidden="true" />
                 <span>Reintentar</span>
@@ -121,7 +122,7 @@ export function InitialPackOnboardingScreen({
               type="button"
               disabled={isLoggingOut}
               onClick={() => void onLogout()}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2 text-xs font-semibold transition-all disabled:opacity-50"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
               <span>{isLoggingOut ? "Cerrando..." : "Cerrar Sesión"}</span>
@@ -136,13 +137,17 @@ export function InitialPackOnboardingScreen({
   // 4. FLUJO PRINCIPAL: Barra superior común y contenido según estado
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col">
+    <div className="min-h-screen poke-arena-bg text-slate-100 flex flex-col">
       {/* Barra superior del portal de jugador en onboarding */}
-      <header className="sticky top-0 z-40 border-b border-arena-border/80 bg-slate-900/80 backdrop-blur-md">
+      <header className="sticky top-0 z-40 glass-panel border-b border-white/10">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/20 border border-blue-400/30">
-              <Sparkles className="h-5 w-5 text-amber-300" aria-hidden="true" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0F172A]/90 border border-white/10 p-1.5 shadow-lg shadow-blue-500/20">
+              <img
+                src={pokemonIcon}
+                alt="Poké-Arena"
+                className="h-6 w-6 object-contain drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -160,7 +165,7 @@ export function InitialPackOnboardingScreen({
               type="button"
               disabled={isLoggingOut}
               onClick={() => void onLogout()}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2 text-xs font-semibold transition-all disabled:opacity-50"
             >
               <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{isLoggingOut ? "Cerrando..." : "Cerrar sesión"}</span>

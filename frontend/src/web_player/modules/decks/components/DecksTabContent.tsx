@@ -36,7 +36,7 @@ export function DecksTabContent({
   if (isLoading) {
     return (
       <div className="flex justify-center py-16">
-        <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -48,7 +48,7 @@ export function DecksTabContent({
         <button
           type="button"
           onClick={reload}
-          className="mt-3 block px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl"
+          className="mt-3 block bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-4 py-2 text-xs font-semibold transition-all"
         >
           Reintentar
         </button>
@@ -63,7 +63,7 @@ export function DecksTabContent({
         <button
           type="button"
           onClick={onCreateDeck}
-          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
+          className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl px-5 py-2.5 text-sm shadow-lg shadow-blue-600/25 border border-blue-400/30 transition-all duration-200 active:scale-[0.99]"
         >
           + Crear Deck
         </button>
@@ -78,23 +78,23 @@ export function DecksTabContent({
 
       {/* Lista */}
       {decks.length === 0 ? (
-        <div className="text-center py-16 text-slate-500">
-          <p className="text-lg font-semibold">Aún no tienes decks</p>
+        <div className="glass-card text-center py-16 px-6 text-slate-400">
+          <p className="text-lg font-bold text-white">Aún no tienes decks</p>
           <p className="text-sm mt-1">Crea tu primer deck con 12 cartas de tu colección.</p>
           <button
             type="button"
             onClick={onCreateDeck}
-            className="mt-4 px-6 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors"
+            className="mt-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-xl px-6 py-2.5 text-sm shadow-lg shadow-blue-600/25 border border-blue-400/30 transition-all duration-200 active:scale-[0.99]"
           >
             + Crear Deck
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
           {decks.map((deck) => (
             <div
               key={deck.id}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-900/80 border border-arena-border"
+              className="flex items-center gap-3 px-5 py-3.5 glass-card"
             >
               <span className="font-semibold text-white truncate flex-1">{deck.name}</span>
               <div className="flex items-center gap-2 shrink-0">
@@ -102,7 +102,7 @@ export function DecksTabContent({
                   type="button"
                   disabled={deletingId === deck.id}
                   onClick={() => onEditDeck(deck.id)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 transition-colors"
+                  className="bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
                 >
                   Editar
                 </button>
@@ -110,7 +110,7 @@ export function DecksTabContent({
                   type="button"
                   disabled={deletingId === deck.id}
                   onClick={() => void handleDelete(deck.id)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-900/50 hover:bg-red-700/70 disabled:opacity-40 text-red-300 hover:text-white transition-colors"
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 text-red-200 transition-all"
                 >
                   {deletingId === deck.id ? "..." : "Eliminar"}
                 </button>

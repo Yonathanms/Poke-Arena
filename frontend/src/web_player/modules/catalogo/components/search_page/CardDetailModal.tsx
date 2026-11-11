@@ -166,13 +166,15 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, onClose 
             </div>
 
             {/* Habilidad */}
-            <div className="mt-4 p-3 rounded-xl bg-indigo-950/30 border border-indigo-500/30">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300 mb-1">
-                <Flame className="w-4 h-4 text-indigo-400" />
+            <div className="mt-4 p-3 rounded-xl bg-blue-950/30 border border-blue-500/30">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-300 mb-1">
+                <Flame className="w-4 h-4 text-blue-400" />
                 <span>Habilidad: {card.ability_name || card.ability_code || 'Ataque Directo'}</span>
               </div>
-              <p className="text-[11px] text-indigo-200/80">
-                {card.ability_code ? `Identificador técnico [${card.ability_code}]. Habilidad pasiva o activa en batalla.` : 'Esta carta cuenta con habilidades de combate elementales.'}
+              <p className="text-[11px] text-blue-200/80">
+                {card.ability_code
+                  ? `Efecto estratégico (${card.ability_code}) disponible al jugar esta carta en la arena.`
+                  : 'Esta carta cuenta con habilidades de combate elementales.'}
               </p>
             </div>
           </div>

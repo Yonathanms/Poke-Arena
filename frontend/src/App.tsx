@@ -109,22 +109,22 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
     ));
 
   return (
-    <div className="min-h-screen bg-arena-bg text-slate-100">
+    <div className="min-h-screen poke-arena-bg text-slate-100">
       <AdminLayout
         session={session}
         remainingSeconds={remainingSeconds}
         isLoggingOut={isLoggingOut}
         onLogout={logout}
       >
-        <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-arena-border pb-3">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setAdminTab("cartas")}
-              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
                 adminTab === "cartas"
-                  ? "bg-arena-accent text-slate-950 shadow"
-                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                  : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
               }`}
             >
               Crear Carta
@@ -132,10 +132,10 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
             <button
               type="button"
               onClick={() => setAdminTab("ubicaciones")}
-              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
                 adminTab === "ubicaciones"
-                  ? "bg-arena-accent text-slate-950 shadow"
-                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                  : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
               }`}
             >
               Crear Ubicación
@@ -143,10 +143,10 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
             <button
               type="button"
               onClick={() => setAdminTab("buscador")}
-              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
                 adminTab === "buscador"
-                  ? "bg-arena-accent text-slate-950 shadow"
-                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                  : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
               }`}
             >
               Buscar Cartas
@@ -154,20 +154,17 @@ export default function App({ children }: AppProps = {}): React.ReactElement {
             <button
               type="button"
               onClick={() => setAdminTab("jugador")}
-              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
                 adminTab === "jugador"
-                  ? "bg-blue-600 text-white shadow"
-                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                  : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
               }`}
             >
               <span>Mi Perfil de Jugador</span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px]">
+              <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-bold">
                 Cubos & ELO
               </span>
             </button>
-          </div>
-          <div className="text-xs text-slate-400 font-medium">
-            Entorno Administrativo · Poké-Arena
           </div>
         </div>
         {workspaceContent}

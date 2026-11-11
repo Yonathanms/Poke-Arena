@@ -50,11 +50,27 @@ const DEFAULT_TYPE_CONFIG = {
   glowClass: 'group-hover:shadow-slate-500/20',
 };
 
-const RARITY_BADGE: Record<CardRarity, { label: string; class: string }> = {
-  COMUN: { label: 'Común', class: 'text-slate-400 border-slate-700 bg-slate-800/40' },
-  POCO_COMUN: { label: 'Poco Común', class: 'text-emerald-400 border-emerald-800/40 bg-emerald-950/30' },
-  RARA: { label: 'Rara', class: 'text-blue-400 border-blue-800/40 bg-blue-950/30' },
-  LEGENDARIA: { label: 'Legendaria', class: 'text-amber-400 border-amber-500/50 bg-amber-950/40 font-bold' },
+const RARITY_BADGE: Record<CardRarity, { label: string; class: string; hoverGlow: string }> = {
+  COMUN: {
+    label: 'Común',
+    class: 'text-slate-300 border-slate-600/60 bg-slate-800/50',
+    hoverGlow: 'hover:shadow-[0_0_15px_rgba(148,163,184,0.25)] hover:border-slate-400/40',
+  },
+  POCO_COMUN: {
+    label: 'Poco Común',
+    class: 'text-amber-300 border-amber-600/50 bg-amber-950/35',
+    hoverGlow: 'hover:shadow-[0_0_18px_rgba(180,83,9,0.35)] hover:border-amber-600/50',
+  },
+  RARA: {
+    label: 'Rara',
+    class: 'text-sky-300 border-sky-500/50 bg-sky-950/35',
+    hoverGlow: 'hover:shadow-[0_0_20px_rgba(56,189,248,0.4)] hover:border-sky-400/60',
+  },
+  LEGENDARIA: {
+    label: 'Legendaria',
+    class: 'text-yellow-300 border-yellow-400/60 bg-yellow-950/45 font-bold',
+    hoverGlow: 'hover:shadow-[0_0_25px_rgba(234,179,8,0.5)] hover:border-yellow-400/70',
+  },
 };
 
 export const CardItem: React.FC<CardItemProps> = ({ card, onSelect }) => {
@@ -76,7 +92,7 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onSelect }) => {
       aria-disabled={!isOwned}
       title={!isOwned ? `${card.name} (No adquirida - Bloqueada)` : `Ver detalle de ${card.name}`}
       className={`group relative flex flex-col rounded-2xl p-3 transition-all duration-300 overflow-hidden ${isOwned
-          ? `bg-arena-card border border-arena-border hover:border-blue-500/70 cursor-pointer hover:-translate-y-1.5 shadow-lg hover:shadow-2xl ${typeConfig.glowClass}`
+          ? `bg-[#0F172A]/85 backdrop-blur-md border border-white/10 cursor-pointer hover:-translate-y-1 shadow-lg ${rarityConfig.hoverGlow}`
           : 'bg-slate-950/70 border border-slate-800/80 grayscale contrast-75 brightness-75 opacity-60 cursor-not-allowed select-none shadow-none'
         }`}
     >
