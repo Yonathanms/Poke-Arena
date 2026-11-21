@@ -24,36 +24,17 @@ from src.shared.http_module import registrar_errores
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Ciclo de vida de la aplicación FastAPI con sincronización outbox automática."""
+    """Ciclo de vida de FastAPI con worker reconciliador periódico SQL -> MongoDB."""
     import asyncio
-    import logging
+    from src.database.outbox_worker import iniciar_bucle_reconciliacion
     from src.database.postgresql.connection import engine
-    from src.modules.catalogo.catalogo_module import componer_procesador_outbox
 
-    logger = logging.getLogger("pokearena.outbox_worker")
-    detener_outbox = asyncio.Event()
-    tarea_outbox: asyncio.Task[None] | None = None
-
-    async def _bucle_outbox():
-        try:
-            procesador, almacen, err_temp = componer_procesador_outbox()
-            await almacen.verificar_indices()
-            while not detener_outbox.is_set():
-                try:
-                    await procesador.lote(50, 5, detener_outbox)
-                except Exception as ex:
-                    logger.debug("Reintento outbox en segundo plano: %s", ex)
-                try:
-                    await asyncio.wait_for(detener_outbox.wait(), timeout=1.5)
-                except TimeoutError:
-                    pass
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.warning("Worker outbox en segundo plano interrumpido: %s", e)
+    detener_reconciliador = asyncio.Event()
+    tarea_reconciliador: asyncio.Task[None] | None = None
 
     try:
-        if get_settings().ORIGINAL_RUNTIME == "api":
+        settings = get_settings()
+        if settings.ORIGINAL_RUNTIME == "api":
             async with engine.connect() as conn:
                 identidad = tuple((await conn.execute(IDENTIDAD_SQL)).one())
                 if (
@@ -64,14 +45,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     raise ValueError("destino_postgresql_original_no_autorizado")
             await verificar_mongo_original("api")
 
-        tarea_outbox = asyncio.create_task(_bucle_outbox())
+        tarea_reconciliador = asyncio.create_task(
+            iniciar_bucle_reconciliacion(
+                detener_reconciliador,
+                settings.RECONCILIATION_INTERVAL_SECONDS,
+            )
+        )
         yield
     finally:
-        detener_outbox.set()
-        if tarea_outbox is not None:
-            tarea_outbox.cancel()
+        detener_reconciliador.set()
+        if tarea_reconciliador is not None:
+            tarea_reconciliador.cancel()
             try:
-                await asyncio.wait_for(tarea_outbox, timeout=2.0)
+                await asyncio.wait_for(tarea_reconciliador, timeout=2.0)
             except (asyncio.CancelledError, TimeoutError, Exception):
                 pass
         await close_mongo_connection()

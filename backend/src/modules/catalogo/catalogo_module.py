@@ -1,6 +1,6 @@
-"""Composición SQL sin registrar API, conectar motores ni activar workers.
+"""Composición SQL/NoSQL del módulo Catálogo.
 
-Punto único de composición y carga para gestion_cartas.
+Punto único de composición y carga para gestion_cartas y gestion_ubicaciones.
 """
 
 from importlib import import_module
@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.postgresql.base import Base
 from src.shared.idempotencia.models import IdempotencyRecordORM
-from src.shared.outbox import OutboxEventORM
 
 _PAQUETE = f"{__package__}.gestion_cartas"
 dominio_cartas = import_module(f"{_PAQUETE}.domain.carta_model")
@@ -20,39 +19,37 @@ puertos_imagenes = import_module(f"{_PAQUETE}.ports.imagen_ports")
 aplicacion_cartas = import_module(f"{_PAQUETE}.services.cartas_service")
 persistencia_creacion = import_module(f"{_PAQUETE}.adapters.sql_creacion_carta")
 proyeccion_domain = import_module(f"{_PAQUETE}.domain.proyeccion_carta")
-outbox_sql = import_module(f"{_PAQUETE}.adapters.sql_outbox_repository")
-outbox_mongo = import_module(f"{_PAQUETE}.adapters.mongo_card_projection")
-outbox_app = import_module(f"{_PAQUETE}.services.proyeccion_service")
+fuente_cartas_sql = import_module(f"{_PAQUETE}.adapters.sql_outbox_repository")
+proyeccion_mongo = import_module(f"{_PAQUETE}.adapters.mongo_card_projection")
+reconciliador_cartas_app = import_module(f"{_PAQUETE}.services.proyeccion_service")
 _orm = import_module(f"{_PAQUETE}.adapters.cartas_orm")
 _repositorio = import_module(f"{_PAQUETE}.adapters.sql_carta_repository")
 
 
 def modelos_persistencia() -> tuple[type[Base], ...]:
-    """Expone seis mapeos únicos sin DDL; metadata parcial no apta para autogenerate."""
+    """Expone los mapeos ORM de catálogo sin DDL."""
     return (
-        _orm.CartaORM, _orm.HabilidadORM, _orm.ImagenCartaORM, _orm.ContadorCartaORM,
-        IdempotencyRecordORM, OutboxEventORM,
+        _orm.CartaORM,
+        _orm.HabilidadORM,
+        _orm.ImagenCartaORM,
+        _orm.ContadorCartaORM,
+        IdempotencyRecordORM,
     )
 
 
 def crear_repositorio_cartas(session: AsyncSession) -> Any:
-    """Inyecta sesión, sin transacciones ni HTTP; frontera dinámica explícita.
-
-    Any está limitado a esta composición: importlib devuelve módulos sin tipos
-    estáticos de sus miembros. El adaptador implementa el puerto tipado original,
-    verificado por Mypy con su nombre de módulo y por pruebas de composición.
-    """
+    """Inyecta sesión SQL para operaciones de catálogo."""
     return _repositorio.SqlCartaRepository(session)
 
 
 def crear_procesador_imagenes() -> Any:
-    """Compone el procesador local sin requerir un event loop ni bases."""
+    """Compone el procesador local Pillow sin requerir un event loop ni bases."""
     modulo = import_module(f"{_PAQUETE}.adapters.imagen_carta_adapter")
     return modulo.ProcesadorImagenPillow()
 
 
 def crear_almacen_imagenes() -> Any:
-    """Compone GridFS en el loop activo mediante el cliente oficial."""
+    """Compone GridFS en el loop activo mediante el cliente PyMongo Async oficial."""
     from gridfs import AsyncGridFSBucket
 
     from src.database.mongodb.connection import get_mongo_db
@@ -63,14 +60,22 @@ def crear_almacen_imagenes() -> Any:
     return modulo.AlmacenImagenGridFS(bucket, crear_procesador_imagenes())
 
 
+def crear_proyeccion_cartas() -> Any:
+    """Compone el adaptador MongoDB para escritura directa y reconciliación de cards_projection."""
+    from src.database.mongodb.connection import get_mongo_db
+
+    return proyeccion_mongo.MongoProyeccionCartas(get_mongo_db()["cards_projection"])
+
+
 def crear_servicio_crear_carta() -> Any:
-    """Compone el caso de uso para Python, con los clientes oficiales."""
+    """Compone CrearCarta con commit ACID en PostgreSQL y proyección directa a MongoDB."""
     from src.database.postgresql.connection import AsyncSessionLocal, engine
 
     return aplicacion_cartas.CrearCarta(
         persistencia_creacion.SqlCoordinacionCreacion(engine, AsyncSessionLocal),
         crear_procesador_imagenes(),
         crear_almacen_imagenes(),
+        crear_proyeccion_cartas(),
     )
 
 
@@ -78,9 +83,13 @@ def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
     return modulo.crear_router(
-        administrador, crear_servicio_crear_carta, listar_habilidades,
-        tipos=listar_tipos, rarezas=listar_rarezas,
-        jugador=jugador, miniatura=recuperar_miniatura_carta,
+        administrador,
+        crear_servicio_crear_carta,
+        listar_habilidades,
+        tipos=listar_tipos,
+        rarezas=listar_rarezas,
+        jugador=jugador,
+        miniatura=recuperar_miniatura_carta,
         imagen_grande=recuperar_imagen_carta,
     )
 
@@ -118,7 +127,9 @@ async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:
             return referencia
 
     datos: bytes | None = await servicio.recuperar_miniatura(
-        carta_id, buscar_referencia, crear_almacen_imagenes(),
+        carta_id,
+        buscar_referencia,
+        crear_almacen_imagenes(),
     )
     return datos
 
@@ -126,27 +137,33 @@ async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:
 def router_ubicaciones(administrador: Any | None = None) -> Any:
     """Compone el router de ubicaciones con autorización."""
     from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router, router
+
     if administrador is not None:
         return crear_router(administrador)
     return router
 
 
-def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
-    """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
-    from src.database.mongodb.connection import get_mongo_db
+def componer_reconciliador_cartas() -> Any:
+    """Compone el reconciliador periódico SQL -> MongoDB para cartas."""
     from src.database.postgresql.connection import AsyncSessionLocal
-    from src.shared.config import get_settings
 
-    ajustes = get_settings()
-    db = get_mongo_db(conexion_directa=True)
-    almacen = outbox_mongo.MongoProyeccionCartas(db["cards_projection"])
-    repo = outbox_sql.SqlOutboxCartas(
-        AsyncSessionLocal, ajustes.OUTBOX_LEASE_SECONDS, ajustes.OUTBOX_MAX_ATTEMPTS
+    return reconciliador_cartas_app.ReconciliadorCartas(
+        fuente_cartas_sql.SqlFuenteCartas(AsyncSessionLocal),
+        crear_proyeccion_cartas(),
     )
-    return (
-        outbox_app.ProcesadorOutbox(repo, almacen, ajustes.OUTBOX_RETRY_MAX_SECONDS),
-        almacen,
-        proyeccion_domain.OutboxTemporal,
+
+
+def componer_reconciliador_ubicaciones() -> Any:
+    """Compone el reconciliador periódico SQL -> MongoDB para ubicaciones."""
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    from .gestion_ubicaciones.adapters.mongo_ubicacion_repository import MongoUbicacionRepository
+    from .gestion_ubicaciones.adapters.sql_ubicacion_repository import SqlFuenteUbicaciones
+    from .gestion_ubicaciones.services.ubicaciones_service import ReconciliadorUbicaciones
+
+    return ReconciliadorUbicaciones(
+        SqlFuenteUbicaciones(AsyncSessionLocal),
+        MongoUbicacionRepository(),
     )
 
 
@@ -181,9 +198,11 @@ async def listar_rarezas() -> list[tuple[str, str]]:
 
 
 __all__ = [
-    "componer_procesador_outbox",
+    "componer_reconciliador_cartas",
+    "componer_reconciliador_ubicaciones",
     "crear_almacen_imagenes",
     "crear_procesador_imagenes",
+    "crear_proyeccion_cartas",
     "crear_repositorio_cartas",
     "crear_servicio_crear_carta",
     "listar_habilidades",

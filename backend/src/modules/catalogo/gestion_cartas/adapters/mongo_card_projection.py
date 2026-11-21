@@ -1,115 +1,87 @@
-"""Publicación monotónica de cartas con el cliente PyMongo Async oficial."""
+"""Adaptador MongoDB para escritura directa y reconciliación de cards_projection."""
 
-from typing import Any, TypeGuard
+import logging
+from typing import Any
 
 from pymongo import ReadPreference
 from pymongo.asynchronous.collection import AsyncCollection
-from pymongo.errors import DuplicateKeyError, PyMongoError
+from pymongo.errors import DuplicateKeyError, OperationFailure, PyMongoError
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
-from src.database.mongodb.destinos_outbox import MONGO_F5_BASE, MONGO_F5_SERVIDOR, PREFIJOS_MONGO_1F
-from src.shared.destinos_originales import MONGO_ORIGINAL
-
 from ..domain.proyeccion_carta import EventoIncompatible, ProyeccionCarta, ProyeccionTemporal
 
-
-def _entero(valor: object) -> TypeGuard[int]:
-    return isinstance(valor, int) and not isinstance(valor, bool)
-
-
-async def verificar_indice_unico_codigo(coleccion: AsyncCollection[dict[str, Any]]) -> None:
-    """Comprueba el índice administrado del catálogo sin modificar la colección."""
-    indices = await coleccion.index_information()
-    if not any(
-        i["key"] == [("code", 1)]
-        and i.get("unique")
-        and not i.get("sparse")
-        and not i.get("partialFilterExpression")
-        for i in indices.values()
-    ):
-        raise ValueError("indice_unico_code_requerido")
+logger = logging.getLogger("pokearena.reconciliador")
 
 
 class MongoProyeccionCartas:
-    """Verifica la colección existente y publica por ID estable con mayoría."""
+    """Proyecta cartas confirmadas en MongoDB con escrituras idempotentes."""
 
     def __init__(self, coleccion: AsyncCollection[dict[str, Any]]) -> None:
-        """Usa la colección inyectada con lecturas primarias y escrituras confirmadas."""
-        db = coleccion.database
-        if db.name in (MONGO_F5_BASE, MONGO_ORIGINAL[2]):
-            from src.shared.config import get_settings
-            from src.database.mongodb.destinos_outbox import MONGO_F5_SERVIDORES
-
-            cliente = db.client
-            servidores = set(cliente.topology_description.server_descriptions())
-            servidores_validos = MONGO_F5_SERVIDORES if db.name == MONGO_F5_BASE else {MONGO_ORIGINAL[:2]}
-            valido = (
-                cliente.options.direct_connection is True
-                and cliente.get_default_database(default="_outbox_sin_base").name == db.name
-                and bool(servidores & servidores_validos)
-                and (db.name == MONGO_F5_BASE or get_settings().ORIGINAL_RUNTIME == "outbox")
-            )
-        else:
-            valido = db.name.startswith(PREFIJOS_MONGO_1F)
-        if coleccion.name != "cards_projection" or not valido:
-            raise ValueError("destino_mongodb_fuera_de_1f")
+        """Configura lecturas primarias y escrituras confirmadas sobre cards_projection."""
         self._coleccion = coleccion.with_options(
             read_preference=ReadPreference.PRIMARY,
             read_concern=ReadConcern("majority"),
             write_concern=WriteConcern(w="majority"),
         )
 
-    async def verificar_indices(self) -> None:
-        """Exige el índice único de código, administrado fuera del worker."""
-        await verificar_indice_unico_codigo(self._coleccion)
+    async def asegurar_indices(self) -> None:
+        """Comprueba el índice único por código y lo crea si el rol tiene permiso."""
+        try:
+            indices = await self._coleccion.index_information()
+            tiene_unico = any(
+                i.get("key") == [("code", 1)] and bool(i.get("unique"))
+                for i in indices.values()
+            )
+            if not tiene_unico:
+                await self._coleccion.create_index([("code", 1)], unique=True, name="uq_cards_projection_code")
+        except OperationFailure as exc:
+            logger.debug("No se pudo crear/verificar índice en cards_projection: %s", exc)
+        except PyMongoError:
+            raise ProyeccionTemporal("mongodb_no_confirmado") from None
 
     async def guardar(self, carta: ProyeccionCarta) -> None:
-        """Inserta o actualiza solo una versión inferior y verifica las colisiones."""
+        """Inserta o actualiza idempotentemente la proyección desde PostgreSQL."""
         documento = carta.documento()
         campos = {k: v for k, v in documento.items() if k != "_id"}
-        codigo = campos["code"]
         try:
-            for _ in range(2):
+            previo = await self._coleccion.find_one({"_id": carta.id})
+            if previo is None:
                 try:
-                    actualizado = await self._coleccion.update_one(
-                        {
-                            "_id": carta.id,
-                            "aggregate_version": {"$gte": 1, "$lt": carta.version},
-                            "$expr": {
-                                "$and": [
-                                    {"$in": [{"$type": "$aggregate_version"}, ["int", "long"]]},
-                                    {"$eq": ["$code", {"$literal": codigo}]},
-                                ]
-                            },
-                        },
-                        {"$set": campos},
-                    )
-                    if actualizado.matched_count:
-                        return
-                    previo = await self._coleccion.find_one({"_id": carta.id})
-                    if previo is None:
-                        await self._coleccion.insert_one(dict(documento))
-                        return
+                    await self._coleccion.insert_one(dict(documento))
+                    return
                 except DuplicateKeyError:
                     previo = await self._coleccion.find_one({"_id": carta.id})
                     if previo is None:
-                        titular = await self._coleccion.find_one({"code": codigo}, {"_id": 1})
+                        titular = await self._coleccion.find_one(
+                            {"code": campos["code"]}, {"_id": 1}
+                        )
                         if titular is not None and titular["_id"] != carta.id:
                             raise EventoIncompatible("codigo_ocupado_por_otro_id") from None
-                        continue
-                version = previo.get("aggregate_version")
-                if previo.get("code") != codigo or not _entero(version) or version < 1:
-                    raise EventoIncompatible("proyeccion_incompatible")
-                if version > carta.version:
+                        raise ProyeccionTemporal("escritura_concurrente_no_confirmada") from None
+
+            version_previa = previo.get("aggregate_version")
+            if isinstance(version_previa, int) and not isinstance(version_previa, bool):
+                if version_previa > carta.version:
                     return
-                if version == carta.version:
-                    if any(
-                        previo.get(k) != v or (isinstance(v, int) and not _entero(previo.get(k)))
-                        for k, v in campos.items()
-                    ):
-                        raise EventoIncompatible("version_igual_con_datos_distintos")
-                    return
+
+            await self._coleccion.update_one(
+                {"_id": carta.id},
+                {"$set": campos},
+            )
+        except EventoIncompatible:
+            raise
         except PyMongoError:
             raise ProyeccionTemporal("mongodb_no_confirmado") from None
-        raise ProyeccionTemporal("escritura_concurrente_no_confirmada")
+
+    async def listar_proyecciones(self) -> dict[str, dict[str, Any]]:
+        """Lee todas las proyecciones existentes en cards_projection indexadas por ID."""
+        try:
+            resultado: dict[str, dict[str, Any]] = {}
+            async for doc in self._coleccion.find({}):
+                clave = str(doc.get("_id") or doc.get("id") or "")
+                if clave:
+                    resultado[clave] = doc
+            return resultado
+        except PyMongoError:
+            raise ProyeccionTemporal("mongodb_no_confirmado") from None

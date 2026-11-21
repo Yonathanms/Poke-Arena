@@ -1,33 +1,29 @@
-"""Dependencias del consumidor de CardCreated."""
+"""Contratos hexagonales para proyección directa y reconciliación de cartas."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
-from ..domain.proyeccion_carta import EventoReclamado, ProyeccionCarta
+from ..domain.proyeccion_carta import ProyeccionCarta
 
 
-class OutboxCartasPort(Protocol):
-    """Define transacciones breves para la entrega y su confirmación."""
+class FuenteCartasSqlPort(Protocol):
+    """Lee el estado autoritativo de cartas listas desde PostgreSQL."""
 
-    async def reclamar(self, limite: int) -> list[EventoReclamado]:
-        """Confirma un lote acotado con leases antes de devolverlo."""
-        ...
-
-    async def proyeccion(
-        self, evento: EventoReclamado, contenido: dict[str, str | int]
-    ) -> ProyeccionCarta:
-        """Contrasta el snapshot con el agregado SQL y su imagen READY."""
-        ...
-
-    async def resolver(
-        self, evento: EventoReclamado, error: str | None, demora: int | None = None
-    ) -> bool:
-        """Confirma éxito, fallo terminal o reintento si el lease sigue vigente."""
+    async def listar_cartas_listas(self) -> list[ProyeccionCarta]:
+        """Retorna todas las cartas confirmadas con imagen en estado READY."""
         ...
 
 
 class ProyeccionCartasPort(Protocol):
-    """Escribe únicamente en la proyección de catálogo."""
+    """Gestiona la proyección de lectura de cartas en MongoDB."""
+
+    async def asegurar_indices(self) -> None:
+        """Verifica o crea el índice único por código en cards_projection."""
+        ...
 
     async def guardar(self, carta: ProyeccionCarta) -> None:
-        """Verifica una escritura monotónica o un resultado previo equivalente."""
+        """Inserta o actualiza idempotentemente la carta en MongoDB."""
+        ...
+
+    async def listar_proyecciones(self) -> dict[str, dict[str, Any]]:
+        """Obtiene los documentos existentes en MongoDB indexados por ID."""
         ...

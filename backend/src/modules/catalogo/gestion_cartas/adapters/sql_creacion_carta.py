@@ -14,9 +14,7 @@ from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_orig
 from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA, REVISIONES_CARTAS
 from src.shared.destinos_originales import PG_ORIGINAL
 from src.shared.idempotencia.models import IdempotencyRecordORM
-from src.shared.outbox import OutboxEventORM
 
-from ..domain.carta_model import Carta
 from ..domain.imagen_model import (
     FormatoImagen,
     ImagenAlmacenada,
@@ -244,32 +242,6 @@ class SqlTransaccionCreacion(TransaccionCreacionPort):
             state="READY",
             sanitized_error=None,
         )
-
-    async def agregar_evento(self, carta: Carta, payload: dict[str, str | int]) -> None:
-        """Guarda CardCreated con el sobre versionado y correlación de la reserva."""
-        self._session.add(
-            OutboxEventORM(
-                id=carta.id,
-                event_type="CardCreated",
-                aggregate_type="card",
-                aggregate_id=carta.id,
-                aggregate_version=carta.version,
-                schema_version=1,
-                correlation_id=carta.id,
-                status="PENDING",
-                attempts=0,
-                created_at=carta.created_at,
-                payload={
-                    "event_id": carta.id,
-                    "aggregate_id": carta.id,
-                    "aggregate_version": carta.version,
-                    "schema_version": 1,
-                    "correlation_id": carta.id,
-                    "payload": payload,
-                },
-            )
-        )
-        await self._session.flush()
 
     async def confirmar(self, operacion_id: str, respuesta: dict[str, str | int]) -> None:
         """Completa el par de respuesta existente y exige una reserva pendiente."""

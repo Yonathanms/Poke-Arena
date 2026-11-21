@@ -11,6 +11,7 @@ from src.database.postgresql.connection import get_db
 from src.shared.http_module import problema, respuestas_documentadas
 
 from ..adapters.imagen_ubicacion_adapter import ImagenUbicacionAdapter
+from ..adapters.mongo_ubicacion_repository import MongoUbicacionRepository
 from ..adapters.sql_ubicacion_repository import SqlUbicacionRepository
 from ..services.ubicaciones_service import UbicacionesService
 from .ubicaciones_dtos import UbicacionResponseDTO
@@ -19,7 +20,8 @@ from .ubicaciones_dtos import UbicacionResponseDTO
 def _get_service(db: AsyncSession) -> UbicacionesService:
     imagen_adapter = ImagenUbicacionAdapter()
     sql_repo = SqlUbicacionRepository(db)
-    return UbicacionesService(imagen_adapter, sql_repo)
+    mongo_repo = MongoUbicacionRepository()
+    return UbicacionesService(imagen_adapter, sql_repo, mongo_repo)
 
 
 def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
@@ -71,9 +73,14 @@ def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
 
         imagen_bytes = await imagen.read()
         service = _get_service(db)
+        actor_id = getattr(_admin, "id", None) or str(_admin)
 
         resultado = await service.crear(
-            datos, imagen_bytes, imagen.content_type or "", idempotency_key
+            datos,
+            imagen_bytes,
+            imagen.content_type or "",
+            idempotency_key,
+            actor_id=actor_id,
         )
         return UbicacionResponseDTO(**resultado)
 

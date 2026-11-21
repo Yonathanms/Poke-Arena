@@ -33,8 +33,7 @@ GRANT SELECT ON alembic_version, catalog_abilities TO orm_media_test;
 GRANT SELECT, UPDATE ON catalog_card_code_counters TO orm_media_test;
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   catalog_cards, catalog_card_images, shared_idempotency_records,
-  shared_outbox, identity_sessions,
-  locations, outbox_events, idempotency_records
+  identity_sessions, locations
 TO orm_media_test;
 REVOKE UPDATE, DELETE, TRUNCATE ON public.identity_users FROM orm_media_test;
 REVOKE UPDATE (id, provider, provider_subject, role, created_at, local_password_hash)
@@ -56,8 +55,7 @@ BEGIN
     GRANT SELECT, UPDATE ON catalog_card_code_counters TO poke_api_user;
     GRANT SELECT, INSERT, UPDATE, DELETE ON
       catalog_cards, catalog_card_images, shared_idempotency_records,
-      shared_outbox, identity_sessions,
-      locations, outbox_events, idempotency_records
+      identity_sessions, locations
     TO poke_api_user;
     REVOKE UPDATE, DELETE, TRUNCATE ON public.identity_users FROM poke_api_user;
     REVOKE UPDATE (id, provider, provider_subject, role, created_at, local_password_hash)
@@ -88,6 +86,14 @@ BEGIN
     GRANT SELECT, INSERT, UPDATE, DELETE ON public.player_decks, public.player_deck_cards TO orm_media_test;
     IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
       GRANT SELECT, INSERT, UPDATE, DELETE ON public.player_decks, public.player_deck_cards TO poke_api_user;
+    END IF;
+  END IF;
+  IF EXISTS (
+    SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'catalog_card_types'
+  ) THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.catalog_card_types, public.catalog_card_rarities TO orm_media_test;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+      GRANT SELECT, INSERT, UPDATE, DELETE ON public.catalog_card_types, public.catalog_card_rarities TO poke_api_user;
     END IF;
   END IF;
 END $$;
@@ -131,7 +137,7 @@ def run_quiet(cmd: list[str], input_data: str | None = None) -> tuple[int, str, 
 
 def _aplicar_permisos_desarrollo() -> None:
     """Aplica los permisos en una transacción y detiene el CLI ante un error."""
-    code, _, _ = run_quiet(
+    code, _, stderr = run_quiet(
         [
             "docker", "exec", "-i", "pokearena-postgres",
             "psql", "-X", "-v", "ON_ERROR_STOP=1", "--single-transaction",
@@ -140,6 +146,8 @@ def _aplicar_permisos_desarrollo() -> None:
         input_data=_DEV_SQL_GRANTS,
     )
     if code != 0:
+        if stderr.strip():
+            print(f"[ERROR PostgreSQL]\n{stderr.strip()}")
         raise SystemExit("No se pudieron aplicar los permisos de desarrollo.")
 
 
@@ -267,11 +275,11 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'pokearena_alembic_fro
     print("\n[4/5] Otorgando permisos de tablas a los usuarios de aplicación...")
     _aplicar_permisos_desarrollo()
 
-    # 6. Configurar índice único de MongoDB
+    # 6. Configurar índices únicos en MongoDB (solo base de desarrollo activa)
     print("\n[5/5] Configurando colecciones e índices en MongoDB...")
     mongo_cmd = """
 db.getSiblingDB('pokearena_catalog_frontend_dev').cards_projection.createIndex({ code: 1 }, { unique: true });
-db.getSiblingDB('pokearena_catalog').cards_projection.createIndex({ code: 1 }, { unique: true });
+db.getSiblingDB('pokearena_catalog_frontend_dev').locations_catalog.createIndex({ id: 1 }, { unique: true });
 """
     run_quiet([
         "docker", "exec", "-i", "pokearena-mongo",

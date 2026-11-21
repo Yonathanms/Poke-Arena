@@ -375,29 +375,12 @@ class EnsambladorCartas:
 
 
 async def _sincronizar_proyeccion_mongo(total_esperado: int) -> int:
-    """Sincroniza los eventos CardCreated pendientes hacia MongoDB cards_projection."""
-    from src.database.mongodb.connection import get_mongo_db
-    from src.modules.catalogo.catalogo_module import componer_procesador_outbox
+    """Verifica y reconcilia las cartas generadas hacia MongoDB cards_projection."""
+    from src.modules.catalogo.catalogo_module import componer_reconciliador_cartas
 
-    db = get_mongo_db(conexion_directa=True)
-    # Asegurar que exista el índice único sobre `code` requerido por el proyector 1F
-    await db["cards_projection"].create_index([("code", 1)], unique=True)
-
-    procesador, almacen, _ = componer_procesador_outbox()
-    await almacen.verificar_indices()
-
-    detener = asyncio.Event()
-    total_sincronizados = 0
-    while True:
-        lote = await procesador.lote(
-            limite=max(50, total_esperado),
-            concurrencia=4,
-            detener=detener,
-        )
-        total_sincronizados += lote
-        if lote == 0:
-            break
-    return total_sincronizados
+    reconciliador = componer_reconciliador_cartas()
+    resultado = await reconciliador.conciliar()
+    return resultado.sincronizadas + resultado.omitidas
 
 
 async def generar_e_inyectar_cartas(
@@ -521,9 +504,9 @@ async def generar_e_inyectar_cartas(
                 f"Rareza: {cfg_rareza.etiqueta:<10} | Costo: {costo:2d} | Poder: {poder:2d}"
             )
 
-        # Sincronizar Outbox -> MongoDB cards_projection para disponibilidad inmediata en la web
+        # Verificar concordancia SQL -> MongoDB cards_projection
         print("-" * 72)
-        print("  Sincronizando eventos Outbox hacia MongoDB ('cards_projection')...")
+        print("  Verificando concordancia en MongoDB ('cards_projection')...")
         proyectadas = await _sincronizar_proyeccion_mongo(creadas)
 
         print("=" * 72)

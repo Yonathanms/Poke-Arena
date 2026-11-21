@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from ..domain.carta_model import Carta
 from ..domain.imagen_model import ImagenAlmacenada
 from .cartas_ports import CartasRepositoryPort, ErrorPersistencia
 
@@ -85,10 +84,6 @@ class TransaccionCreacionPort(Protocol):
 
     async def marcar_lista(self, operacion_id: str, ahora: datetime) -> None:
         """Marca READY la reserva ya verificada por el servicio."""
-        ...
-
-    async def agregar_evento(self, carta: Carta, payload: dict[str, str | int]) -> None:
-        """Inserta el sobre CardCreated existente en la transacción de la carta."""
         ...
 
     async def confirmar(self, operacion_id: str, respuesta: dict[str, str | int]) -> None:

@@ -58,12 +58,8 @@ class Settings(EnvironmentSettings):
     MONGO_DB: str = "pokearena_catalog"
     MONGO_GRIDFS_BUCKET: str = "card_assets"
 
-    OUTBOX_BATCH_SIZE: int = Field(default=20, ge=1, le=500)
-    OUTBOX_CONCURRENCY: int = Field(default=4, ge=1, le=20)
-    OUTBOX_POLL_SECONDS: float = Field(default=5, ge=0.1, le=300)
-    OUTBOX_LEASE_SECONDS: int = Field(default=60, ge=1, le=3600)
-    OUTBOX_MAX_ATTEMPTS: int = Field(default=8, ge=1, le=25)
-    OUTBOX_RETRY_MAX_SECONDS: int = Field(default=300, ge=1, le=3600)
+    # Reconciliación periódica PostgreSQL -> MongoDB (centralizada en la API)
+    RECONCILIATION_INTERVAL_SECONDS: float = Field(default=600.0, ge=5.0, le=86400.0)
 
     # Almacenamiento de imágenes
     UPLOAD_DIR: str = "./uploads"
