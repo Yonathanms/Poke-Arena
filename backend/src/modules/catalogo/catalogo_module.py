@@ -3,9 +3,11 @@
 Punto único de composición y carga para gestion_cartas y gestion_ubicaciones.
 """
 
+from collections.abc import Sequence
 from importlib import import_module
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.postgresql.base import Base
@@ -264,6 +266,98 @@ async def listar_rarezas() -> list[tuple[str, str]]:
         return list(filas)
 
 
+async def leer_cartas_catalogo_para_partida(
+    sesion: AsyncSession,
+    card_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Lee snapshots de cartas con sus habilidades usando una sesión ya abierta."""
+    if not card_ids:
+        return []
+    resultado = await sesion.execute(
+        text("""
+            SELECT c.id, c.code, c.name, c.cost, c.power, c.card_type, c.rarity,
+                   a.code AS ability_code, a.name AS ability_name, a.params AS ability_params
+            FROM catalog_cards c
+            JOIN catalog_abilities a ON a.id = c.ability_id
+            WHERE c.id = ANY(:card_ids)
+        """),
+        {"card_ids": list(card_ids)},
+    )
+    return [
+        {
+            "id": str(fila["id"]),
+            "code": str(fila["code"]),
+            "name": str(fila["name"]),
+            "cost": int(fila["cost"]),
+            "power": int(fila["power"]),
+            "card_type": str(fila["card_type"]),
+            "rarity": str(fila["rarity"]),
+            "ability_code": str(fila["ability_code"]),
+            "ability_name": str(fila["ability_name"]),
+            "ability_params": dict(fila["ability_params"] or {}),
+        }
+        for fila in resultado.mappings().all()
+    ]
+
+
+async def listar_ubicaciones_catalogo_para_partida(sesion: AsyncSession) -> list[dict[str, Any]]:
+    """Lista todas las ubicaciones del catálogo para sorteo de inicio de partida."""
+    resultado = await sesion.execute(
+        text("""
+            SELECT id, nombre, descripcion, card_limit, energia_tipo, energia_valor,
+                   efecto_tipo, efecto_params
+            FROM locations
+            ORDER BY id
+        """)
+    )
+    ubicaciones: list[dict[str, Any]] = []
+    for fila in resultado.mappings().all():
+        loc_id = str(fila["id"])
+        ubicaciones.append({
+            "id": loc_id,
+            "nombre": str(fila["nombre"]),
+            "descripcion": str(fila["descripcion"]),
+            "card_limit": int(fila["card_limit"]),
+            "energia_tipo": str(fila["energia_tipo"]),
+            "energia_valor": int(fila["energia_valor"]),
+            "efecto_tipo": str(fila["efecto_tipo"]),
+            "efecto_params": dict(fila["efecto_params"] or {}),
+            "image_url": f"/api/v1/content/locations/{loc_id}/image",
+            "thumbnail_url": f"/api/v1/content/locations/{loc_id}/thumbnail",
+        })
+    return ubicaciones
+
+
+async def listar_cartas_elegibles_bot(sesion: AsyncSession) -> list[dict[str, Any]]:
+    """Lista cartas del catálogo con imagen READY para conformar el deck del Bot."""
+    resultado = await sesion.execute(
+        text("""
+            SELECT c.id, c.code, c.name, c.cost, c.power, c.card_type, c.rarity,
+                   a.code AS ability_code, a.name AS ability_name, a.params AS ability_params
+            FROM catalog_cards c
+            JOIN catalog_abilities a ON a.id = c.ability_id
+            JOIN catalog_card_images ci ON ci.id = c.image_id
+            WHERE ci.state = 'READY'
+            ORDER BY c.id
+        """)
+    )
+    return [
+        {
+            "id": str(fila["id"]),
+            "code": str(fila["code"]),
+            "name": str(fila["name"]),
+            "cost": int(fila["cost"]),
+            "power": int(fila["power"]),
+            "card_type": str(fila["card_type"]),
+            "rarity": str(fila["rarity"]),
+            "ability_code": str(fila["ability_code"]),
+            "ability_name": str(fila["ability_name"]),
+            "ability_params": dict(fila["ability_params"] or {}),
+        }
+        for fila in resultado.mappings().all()
+    ]
+
+
 __all__ = [
     "componer_reconciliador_cartas",
     "componer_reconciliador_ubicaciones",
@@ -272,9 +366,12 @@ __all__ = [
     "crear_proyeccion_cartas",
     "crear_repositorio_cartas",
     "crear_servicio_crear_carta",
+    "leer_cartas_catalogo_para_partida",
+    "listar_cartas_elegibles_bot",
     "listar_habilidades",
     "listar_rarezas",
     "listar_tipos",
+    "listar_ubicaciones_catalogo_para_partida",
     "modelos_persistencia",
     "recuperar_imagen_ubicacion",
     "recuperar_miniatura_ubicacion",
