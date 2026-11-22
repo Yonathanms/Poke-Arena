@@ -5,11 +5,11 @@
  * 1. Consultar el perfil persistido en PostgreSQL (`GET /api/v1/identity/me`) mediante `usePlayerProfile`.
  * 2. Mostrar la información del usuario, puntuación ELO, cubos de energía y verificación de conexión a SQL.
  * 3. Proporcionar la acción de cierre de sesión coordinada con el store en memoria.
- * 4. Gestionar los tabs de navegación: Perfil, Catálogo & Colección, Decks.
+ * 4. Gestionar los tabs de navegación: Perfil, Catálogo & Colección, Decks, Arena / Jugar.
  */
 
 import React, { useState } from "react";
-import { User, BookOpen, Layers } from "lucide-react";
+import { User, BookOpen, Layers, Swords } from "lucide-react";
 import { ProfileHeader } from "../components/ProfileHeader";
 import { PlayerStatsGrid } from "../components/PlayerStatsGrid";
 import { DatabaseVerificationCard } from "../components/DatabaseVerificationCard";
@@ -20,8 +20,11 @@ import { useDecks } from "../../decks/hooks/useDecks";
 import { CreateDeckScreen } from "../../decks/screens/CreateDeckScreen";
 import { EditDeckScreen } from "../../decks/screens/EditDeckScreen";
 import { DecksTabContent } from "../../decks/components/DecksTabContent";
+import { useMatchmaking } from "../../partidas/hooks/useMatchmaking";
+import { ActiveMatchScreen } from "../../partidas/screens/ActiveMatchScreen";
+import { MatchmakingScreen } from "../../partidas/screens/MatchmakingScreen";
 
-type ActiveTab = "perfil" | "catalogo" | "decks";
+type ActiveTab = "perfil" | "catalogo" | "decks" | "arena";
 type DeckSubView = "list" | "create" | "edit";
 
 export interface VistaPrincipalScreenProps {
@@ -37,9 +40,15 @@ export function VistaPrincipalScreen({
   const [activeTab, setActiveTab] = useState<ActiveTab>("perfil");
   const [deckSubView, setDeckSubView] = useState<DeckSubView>("list");
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
-  const { deckCount, isLoading: decksLoading, reload: reloadDecks } = useDecks();
+  const [activeMatchScreenId, setActiveMatchScreenId] = useState<string | null>(null);
+  const { decks, deckCount, isLoading: decksLoading, reload: reloadDecks } = useDecks();
+  const matchmaking = useMatchmaking({
+    enabled: Boolean(profile),
+    onMatchFound: (matchId) => setActiveMatchScreenId(matchId),
+    onActiveSearchResumed: () => setActiveTab("arena"),
+  });
 
-  // Pantallas full-screen de creación/edición de decks (bypasan el layout de tabs)
+  // Pantallas full-screen de creación/edición de decks y combate (bypasan el layout de tabs)
   if (deckSubView === "create") {
     return (
       <CreateDeckScreen
@@ -62,6 +71,19 @@ export function VistaPrincipalScreen({
           reloadDecks();
           setDeckSubView("list");
           setEditingDeckId(null);
+        }}
+      />
+    );
+  }
+
+  if (activeMatchScreenId) {
+    return (
+      <ActiveMatchScreen
+        matchId={activeMatchScreenId}
+        onBack={() => {
+          setActiveMatchScreenId(null);
+          setActiveTab("arena");
+          void matchmaking.refreshStatus({ autoEnterMatch: false });
         }}
       />
     );
@@ -175,6 +197,37 @@ export function VistaPrincipalScreen({
               </span>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("arena")}
+            data-testid="tab-player-arena"
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === "arena"
+                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-600/25 border border-blue-400/30"
+                : "bg-slate-800/70 hover:bg-slate-700/80 text-slate-200 border border-white/10"
+            }`}
+          >
+            <Swords className="w-4 h-4" />
+            <span>Arena / Jugar</span>
+            {matchmaking.activeMatchId ? (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 text-[10px] font-bold">
+                En duelo
+              </span>
+            ) : matchmaking.search?.status === "SEARCHING" ? (
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 text-[10px] font-bold animate-pulse">
+                Buscando
+              </span>
+            ) : (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === "arena"
+                  ? "bg-blue-950/60 text-blue-200 border border-blue-300/40"
+                  : "bg-blue-500/20 text-blue-300 border border-blue-400/30"
+              }`}>
+                Jugar
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Vista activa según la pestaña seleccionada */}
@@ -187,12 +240,24 @@ export function VistaPrincipalScreen({
           <div className="animate-fade-in">
             <SearchCardsScreen mode="player" />
           </div>
-        ) : (
+        ) : activeTab === "decks" ? (
           <div className="animate-fade-in">
             <DecksTabContent
               onCreateDeck={() => setDeckSubView("create")}
               onEditDeck={(deckId) => { setEditingDeckId(deckId); setDeckSubView("edit"); }}
               onDecksChanged={reloadDecks}
+            />
+          </div>
+        ) : (
+          <div className="animate-fade-in">
+            <MatchmakingScreen
+              playerCubes={profile.cubes}
+              playerElo={profile.elo}
+              decks={decks}
+              decksLoading={decksLoading}
+              matchmaking={matchmaking}
+              onCreateDeck={() => setDeckSubView("create")}
+              onResumeMatch={(matchId) => setActiveMatchScreenId(matchId)}
             />
           </div>
         )}

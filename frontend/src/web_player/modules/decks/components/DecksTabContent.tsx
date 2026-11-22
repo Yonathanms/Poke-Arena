@@ -1,6 +1,7 @@
 /** Contenido del tab Decks: lista inline con acciones de crear, editar y eliminar. */
 
 import React, { useState } from "react";
+import { ApiHttpError } from "../../../../shared/services/http-client";
 import { deleteDeck } from "../services/decks.api";
 import { useDecks } from "../hooks/useDecks";
 
@@ -26,8 +27,12 @@ export function DecksTabContent({
       await deleteDeck(deckId);
       reload();
       onDecksChanged();
-    } catch {
-      setDeleteError("No se pudo eliminar el deck. Intenta de nuevo.");
+    } catch (err) {
+      if (err instanceof ApiHttpError && err.detail) {
+        setDeleteError(err.detail);
+      } else {
+        setDeleteError("No se pudo eliminar el deck. Intenta de nuevo.");
+      }
     } finally {
       setDeletingId(null);
     }
