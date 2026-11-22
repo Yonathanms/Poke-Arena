@@ -13,6 +13,7 @@ from ..domain.deck_model import (
     DeckCartasNoPertenecen,
     DeckCartasRepetidas,
     DeckEnCurso,
+    DeckEnUso,
     DeckNoEncontrado,
     DeckNombreOcupado,
     DeckTamanoInvalido,
@@ -32,7 +33,7 @@ def crear_router_decks(
         400: "Solicitud inválida",
         401: "Sesión inválida o revocada",
         403: "Cuenta sin acceso de jugador o paquete sin abrir",
-        409: "Nombre de deck ya utilizado o solicitud en curso",
+        409: "Nombre de deck ya utilizado, deck en uso o solicitud en curso",
         422: "Datos de entrada inválidos",
         500: "Error interno",
     })
@@ -160,6 +161,8 @@ def crear_router_decks(
         except DeckNombreOcupado:
             raise problema(409, "deck_nombre_ocupado",
                            f"Ya tienes un deck llamado {body.name!r}.") from None
+        except DeckEnUso as exc:
+            raise problema(409, "deck_en_uso", str(exc)) from None
         except HTTPException:
             raise
         except Exception:
@@ -180,6 +183,10 @@ def crear_router_decks(
             await servicio().eliminar_deck(principal.id, deck_id)
         except DeckNoEncontrado:
             raise problema(404, "deck_no_encontrado", "El deck no existe.") from None
+        except DeckEnUso as exc:
+            raise problema(409, "deck_en_uso", str(exc)) from None
+        except HTTPException:
+            raise
         except Exception:
             logger.exception("Error al eliminar deck %s para user=%s", deck_id, principal.id)
             raise problema(500, "error_eliminar_deck", "No se pudo eliminar el deck.") from None

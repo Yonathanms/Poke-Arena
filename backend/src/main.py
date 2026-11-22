@@ -84,8 +84,8 @@ def crear_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
-        expose_headers=["X-Correlation-ID", "Retry-After"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "If-None-Match"],
+        expose_headers=["X-Correlation-ID", "Retry-After", "ETag"],
     )
     registrar_errores(app)
     app.include_router(

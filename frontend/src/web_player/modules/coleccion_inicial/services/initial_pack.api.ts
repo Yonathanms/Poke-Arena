@@ -173,6 +173,8 @@ function validateAndFreezeResponse(
     status: response.status,
     data: freezeInitialPackStatus(response.data),
     correlationId: response.correlationId,
+    etag: response.etag,
+    notModified: response.notModified,
   };
 }
 

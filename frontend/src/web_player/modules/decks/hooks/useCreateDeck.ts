@@ -1,6 +1,6 @@
 /** Hook para manejar el formulario de creación de deck. */
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ApiHttpError } from "../../../../shared/services/http-client";
 import { createDeck } from "../services/decks.api";
 import { DECK_SIZE, type DeckSummary } from "../types/deck.types";
@@ -22,16 +22,26 @@ interface UseCreateDeckResult {
 }
 
 export function useCreateDeck(onSuccess?: (deck: DeckSummary) => void): UseCreateDeckResult {
-  const [name, setName] = useState("");
+  const [name, setNameState] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [status, setStatus] = useState<CreateDeckStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdDeck, setCreatedDeck] = useState<DeckSummary | null>(null);
+  const pendingKeyRef = useRef<string | null>(null);
+
+  const setName = useCallback((nextName: string) => {
+    pendingKeyRef.current = null;
+    setNameState(nextName);
+  }, []);
 
   const toggleCard = useCallback((cardId: string) => {
     setSelectedCardIds((prev) => {
-      if (prev.includes(cardId)) return prev.filter((id) => id !== cardId);
+      if (prev.includes(cardId)) {
+        pendingKeyRef.current = null;
+        return prev.filter((id) => id !== cardId);
+      }
       if (prev.length >= DECK_SIZE) return prev;
+      pendingKeyRef.current = null;
       return [...prev, cardId];
     });
   }, []);
@@ -51,16 +61,21 @@ export function useCreateDeck(onSuccess?: (deck: DeckSummary) => void): UseCreat
     setStatus("submitting");
     setErrorMessage(null);
 
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = pendingKeyRef.current ?? crypto.randomUUID();
+    pendingKeyRef.current = idempotencyKey;
     try {
       const deck = await createDeck(
         { name: name.trim(), card_ids: selectedCardIds },
         idempotencyKey
       );
+      pendingKeyRef.current = null;
       setCreatedDeck(deck);
       setStatus("success");
       onSuccess?.(deck);
     } catch (err) {
+      if (!(err instanceof ApiHttpError && err.shouldPreserveIdempotencyKey)) {
+        pendingKeyRef.current = null;
+      }
       let msg = "No se pudo crear el deck. Intenta de nuevo.";
       if (err instanceof ApiHttpError) {
         if (err.code === "deck_nombre_ocupado") {
@@ -75,7 +90,8 @@ export function useCreateDeck(onSuccess?: (deck: DeckSummary) => void): UseCreat
   }, [canSubmit, name, selectedCardIds, onSuccess]);
 
   const reset = useCallback(() => {
-    setName("");
+    pendingKeyRef.current = null;
+    setNameState("");
     setSelectedCardIds([]);
     setStatus("idle");
     setErrorMessage(null);

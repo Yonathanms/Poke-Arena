@@ -102,7 +102,7 @@ export class ApiHttpError extends Error {
     if (this.status === 500 || this.status === 503) {
       return true;
     }
-    return this.status === 409 && this.code === "en_curso";
+    return this.status === 409 && (this.code === "en_curso" || this.code === "deck_en_curso");
   }
 }
 
@@ -115,6 +115,8 @@ export interface ApiRequestOptions {
   readonly requiresAuth?: boolean;
   /** Clave de idempotencia provista por el llamador; el cliente valida formato pero nunca la genera. */
   readonly idempotencyKey?: string;
+  /** Valor ETag previo para validación condicional (`If-None-Match` -> `304 Not Modified`). */
+  readonly ifNoneMatch?: string;
   readonly signal?: AbortSignal;
   /** Permite inyectar una implementación de `fetch` en pruebas unitarias sin tocar la red. */
   readonly fetchImpl?: typeof fetch;
@@ -131,6 +133,8 @@ export interface ApiResponse<T> {
   readonly status: number;
   readonly data: T;
   readonly correlationId: string | null;
+  readonly etag: string | null;
+  readonly notModified: boolean;
 }
 
 function buildUrl(endpoint: string, baseUrl: string): string {
@@ -227,6 +231,13 @@ function prepareHeadersAndBody(options: ApiRequestOptions): {
     headers.set("Idempotency-Key", options.idempotencyKey);
   }
 
+  if (options.ifNoneMatch !== undefined) {
+    const trimmedEtag = options.ifNoneMatch.trim();
+    if (trimmedEtag.length > 0) {
+      headers.set("If-None-Match", trimmedEtag);
+    }
+  }
+
   const rawBody = options.body;
   if (rawBody === undefined || rawBody === null) {
     return { headers, body: undefined, usedAccessToken };
@@ -316,6 +327,19 @@ export async function requestApiWithMeta<T>(
     });
   }
 
+  const correlationId = response.headers.get("X-Correlation-ID");
+  const etag = response.headers.get("ETag");
+
+  if (response.status === 304) {
+    return {
+      status: 304,
+      data: undefined as T,
+      correlationId,
+      etag,
+      notModified: true,
+    };
+  }
+
   if (!response.ok) {
     if (response.status === 401 && requiresAuth) {
       const handleUnauthorized = options.onUnauthorized ?? defaultUnauthorizedHandler;
@@ -324,12 +348,13 @@ export async function requestApiWithMeta<T>(
     throw await parseErrorResponse(response);
   }
 
-  const correlationId = response.headers.get("X-Correlation-ID");
   if (response.status === 204) {
     return {
       status: 204,
       data: undefined as T,
       correlationId,
+      etag,
+      notModified: false,
     };
   }
 
@@ -338,6 +363,8 @@ export async function requestApiWithMeta<T>(
     status: response.status,
     data,
     correlationId,
+    etag,
+    notModified: false,
   };
 }
 

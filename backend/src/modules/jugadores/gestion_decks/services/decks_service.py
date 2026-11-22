@@ -4,18 +4,22 @@ from ..domain.deck_model import (
     MAX_DECK_SIZE,
     Deck,
     DeckCartasRepetidas,
+    DeckEnUso,
     DeckResumen,
     DeckTamanoInvalido,
 )
-from ..ports.deck_ports import RepositorioDecks
-
-
+from ..ports.deck_ports import RepositorioDecks, VerificadorDeckEnUsoPort
 
 
 class DecksService:
 
-    def __init__(self, repo: RepositorioDecks) -> None:
+    def __init__(
+        self,
+        repo: RepositorioDecks,
+        verificador_en_uso: VerificadorDeckEnUsoPort | None = None,
+    ) -> None:
         self._repo = repo
+        self._verificador = verificador_en_uso
 
     async def crear_deck(
         self,
@@ -46,6 +50,8 @@ class DecksService:
     async def actualizar_deck(
         self, user_id: str, deck_id: str, name: str, card_ids: list[str]
     ) -> Deck:
+        if self._verificador and await self._verificador.esta_en_uso(user_id, deck_id):
+            raise DeckEnUso()
         if len(card_ids) != MAX_DECK_SIZE:
             raise DeckTamanoInvalido(recibidas=len(card_ids))
         repetidas = [cid for cid in card_ids if card_ids.count(cid) > 1]
@@ -54,4 +60,6 @@ class DecksService:
         return await self._repo.actualizar_deck(user_id, deck_id, name, card_ids)
 
     async def eliminar_deck(self, user_id: str, deck_id: str) -> None:
+        if self._verificador and await self._verificador.esta_en_uso(user_id, deck_id):
+            raise DeckEnUso()
         await self._repo.eliminar_deck(user_id, deck_id)
