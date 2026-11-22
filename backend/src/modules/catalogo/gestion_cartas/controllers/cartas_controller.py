@@ -23,8 +23,6 @@ from starlette.requests import ClientDisconnect
 from src.shared.http_module import problema, respuestas_documentadas
 from src.shared.validacion.cuerpo import CuerpoExcesivo, flujo_acotado
 
-from ..adapters.mongo_carta_repository import MongoCartaRepository
-from ..adapters.sql_inventario_adapter import SqlInventarioJugadorAdapter
 from ..domain.carta_model import DatosCarta
 from ..domain.imagen_model import MAX_IMAGE_BYTES
 from ..ports.cartas_ports import ErrorPersistencia
@@ -159,6 +157,7 @@ def crear_router(
     administrador: Callable[..., Awaitable[str]],
     servicio: Callable[[], CrearCarta],
     habilidades: Callable[[], Awaitable[list[tuple[str, str]]]],
+    servicio_consulta: Callable[[], CartasService] | None = None,
     tipos: Callable[[], Awaitable[list[tuple[str, str, str | None]]]] | None = None,
     rarezas: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None,
     jugador: Callable[..., Awaitable[Any]] | None = None,
@@ -363,9 +362,9 @@ def crear_router(
         )
 
         user_id = getattr(_actor, "id", None)
-        repo = MongoCartaRepository()
-        inventario = SqlInventarioJugadorAdapter()
-        srv = CartasService(repository=repo, inventario=inventario)
+        if servicio_consulta is None:
+            raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.")
+        srv = servicio_consulta()
         search_params = CartaSearchQueryDTO(
             q=q,
             tipo=tipo_dto,
@@ -395,9 +394,9 @@ def crear_router(
         _actor: Any = Depends(auth_jugador),
     ) -> CartaResponseDTO:
         user_id = getattr(_actor, "id", None)
-        repo = MongoCartaRepository()
-        inventario = SqlInventarioJugadorAdapter()
-        srv = CartasService(repository=repo, inventario=inventario)
+        if servicio_consulta is None:
+            raise problema(503, "catalogo_no_disponible", "Catálogo no disponible.")
+        srv = servicio_consulta()
         try:
             carta = await srv.obtener_detalle_carta(identificador, user_id=user_id)
         except ErrorPersistencia:

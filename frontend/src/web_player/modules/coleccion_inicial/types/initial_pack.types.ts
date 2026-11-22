@@ -26,12 +26,20 @@ export type InitialPackState =
 
 /**
  * Resumen público de una carta común incluida en la colección inicial (`CartaInicialDTO`).
- * Solo se devuelve en `GET /api/v1/player/initial-pack` cuando `state === "READY_TO_OPEN"`.
+ * Incluye metadatos y endpoints de imagen real servida desde GridFS.
  */
 export interface InitialPackCardDTO {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  readonly card_type: string;
+  readonly rarity: string;
+  readonly cost: number;
+  readonly power: number;
+  readonly ability_code: string;
+  readonly ability_name: string;
+  readonly image_url: string;
+  readonly thumbnail_url: string;
 }
 
 /**

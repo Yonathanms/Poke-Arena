@@ -79,6 +79,32 @@ def crear_servicio_crear_carta() -> Any:
     )
 
 
+def crear_servicio_consulta_cartas() -> Any:
+    """Compone el servicio de consulta de catálogo (MongoDB + inventario SQL)."""
+    mongo_repo_mod = import_module(f"{_PAQUETE}.adapters.mongo_carta_repository")
+    inventario_mod = import_module(f"{_PAQUETE}.adapters.sql_inventario_adapter")
+    return aplicacion_cartas.CartasService(
+        repository=mongo_repo_mod.MongoCartaRepository(),
+        inventario=inventario_mod.SqlInventarioJugadorAdapter(),
+    )
+
+
+def crear_servicio_ubicaciones() -> Any:
+    """Compone el caso de uso de ubicaciones con sus adaptadores de medios, SQL y MongoDB."""
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    from .gestion_ubicaciones.adapters.imagen_ubicacion_adapter import ImagenUbicacionAdapter
+    from .gestion_ubicaciones.adapters.mongo_ubicacion_repository import MongoUbicacionRepository
+    from .gestion_ubicaciones.adapters.sql_ubicacion_repository import SqlUbicacionRepository
+    from .gestion_ubicaciones.services.ubicaciones_service import UbicacionesService
+
+    return UbicacionesService(
+        ImagenUbicacionAdapter(),
+        SqlUbicacionRepository(AsyncSessionLocal),
+        MongoUbicacionRepository(),
+    )
+
+
 def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
@@ -86,6 +112,7 @@ def router_cartas(administrador: Any, jugador: Any = None) -> Any:
         administrador,
         crear_servicio_crear_carta,
         listar_habilidades,
+        servicio_consulta=crear_servicio_consulta_cartas,
         tipos=listar_tipos,
         rarezas=listar_rarezas,
         jugador=jugador,
@@ -134,13 +161,11 @@ async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:
     return datos
 
 
-def router_ubicaciones(administrador: Any | None = None) -> Any:
-    """Compone el router de ubicaciones con autorización."""
-    from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router, router
+def router_ubicaciones(administrador: Any) -> Any:
+    """Compone el router de ubicaciones con autorización y caso de uso."""
+    from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router
 
-    if administrador is not None:
-        return crear_router(administrador)
-    return router
+    return crear_router(administrador, crear_servicio_ubicaciones)
 
 
 def componer_reconciliador_cartas() -> Any:

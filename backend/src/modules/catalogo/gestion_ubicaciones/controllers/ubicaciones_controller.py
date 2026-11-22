@@ -1,31 +1,22 @@
-"""Endpoint POST /api/v1/content/locations con multipart y autorización."""
+"""Endpoint HTTP POST /api/v1/content/locations desacoplado de adaptadores de BD."""
 
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.postgresql.connection import get_db
 from src.shared.http_module import problema, respuestas_documentadas
 
-from ..adapters.imagen_ubicacion_adapter import ImagenUbicacionAdapter
-from ..adapters.mongo_ubicacion_repository import MongoUbicacionRepository
-from ..adapters.sql_ubicacion_repository import SqlUbicacionRepository
 from ..services.ubicaciones_service import UbicacionesService
 from .ubicaciones_dtos import UbicacionResponseDTO
 
 
-def _get_service(db: AsyncSession) -> UbicacionesService:
-    imagen_adapter = ImagenUbicacionAdapter()
-    sql_repo = SqlUbicacionRepository(db)
-    mongo_repo = MongoUbicacionRepository()
-    return UbicacionesService(imagen_adapter, sql_repo, mongo_repo)
-
-
-def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
-    """Compone el router de ubicaciones inyectando el guard de autorización oficial."""
+def crear_router(
+    administrador: Callable[..., Awaitable[Any]],
+    servicio: Callable[[], UbicacionesService],
+) -> APIRouter:
+    """Compone el router de ubicaciones inyectando autorización y caso de uso."""
     router = APIRouter()
 
     @router.post(
@@ -49,7 +40,6 @@ def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
         efecto_params: str = Form(...),
         imagen: UploadFile = File(...),
         idempotency_key: str = Header(..., alias="idempotency-key"),
-        db: AsyncSession = Depends(get_db),
         _admin: Any = Depends(administrador),
     ) -> UbicacionResponseDTO:
         try:
@@ -72,10 +62,9 @@ def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
         }
 
         imagen_bytes = await imagen.read()
-        service = _get_service(db)
         actor_id = getattr(_admin, "id", None) or str(_admin)
 
-        resultado = await service.crear(
+        resultado = await servicio().crear(
             datos,
             imagen_bytes,
             imagen.content_type or "",
@@ -85,7 +74,3 @@ def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
         return UbicacionResponseDTO(**resultado)
 
     return router
-
-
-# Router por defecto para compatibilidad
-router = crear_router(lambda: "admin-default")

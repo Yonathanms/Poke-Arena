@@ -34,11 +34,19 @@ class ConfirmarApertura(BaseModel):
 
 
 class CartaInicialDTO(BaseModel):
-    """Identificador y datos públicos de una carta realmente asignada."""
+    """Identificador, metadatos y URLs de imagen de una carta asignada."""
 
     id: str
     code: str
     name: str
+    card_type: str
+    rarity: str
+    cost: int
+    power: int
+    ability_code: str
+    ability_name: str
+    image_url: str
+    thumbnail_url: str
 
 
 class PaqueteInicialDTO(BaseModel):
@@ -58,7 +66,19 @@ def _respuesta(estado: EstadoPaqueteInicial) -> PaqueteInicialDTO:
         opened=estado.estado is EstadoPaquete.COMPLETED,
         opened_at=estado.abierto_en,
         cards=[
-            CartaInicialDTO(id=carta.id, code=carta.code, name=carta.name)
+            CartaInicialDTO(
+                id=carta.id,
+                code=carta.code,
+                name=carta.name,
+                card_type=carta.card_type,
+                rarity=carta.rarity,
+                cost=carta.cost,
+                power=carta.power,
+                ability_code=carta.ability_code,
+                ability_name=carta.ability_name,
+                image_url=f"/api/v1/content/cards/{carta.id}/image",
+                thumbnail_url=f"/api/v1/content/cards/{carta.id}/thumbnail",
+            )
             for carta in estado.cartas
         ],
     )
