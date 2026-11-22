@@ -18,6 +18,7 @@ from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA
 from src.modules.catalogo.catalogo_module import router_cartas, router_ubicaciones
 from src.modules.identidad import identidad_module
 from src.modules.jugadores.jugadores_module import provisionar_google, router_coleccion, router_decks, router_paquete
+from src.shared.cache import close_cache, get_cache
 from src.shared.config import get_settings
 from src.shared.http_module import registrar_errores
 
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await asyncio.wait_for(tarea_reconciliador, timeout=2.0)
             except (asyncio.CancelledError, TimeoutError, Exception):
                 pass
+        await close_cache()
         await close_mongo_connection()
         await engine.dispose()
 
@@ -102,7 +104,10 @@ def crear_app() -> FastAPI:
         prefix=settings.API_V1_PREFIX,
     )
     app.include_router(
-        router_ubicaciones(identidad_module.requerir_administrador),
+        router_ubicaciones(
+            identidad_module.requerir_administrador,
+            identidad_module.requerir_jugador,
+        ),
         prefix=settings.API_V1_PREFIX,
     )
     app.add_api_route(
@@ -117,12 +122,13 @@ def crear_app() -> FastAPI:
 
 
 async def health_check() -> dict[str, Any]:
-    """Prueba ambos motores sin exponer diagnósticos de conexión."""
+    """Prueba motores y caché sin exponer diagnósticos ni secretos de conexión."""
     from src.database.postgresql.connection import engine
 
+    settings = get_settings()
     health_status: dict[str, Any] = {
         "status": "healthy",
-        "environment": get_settings().ENVIRONMENT,
+        "environment": settings.ENVIRONMENT,
         "databases": {},
     }
 
@@ -141,6 +147,14 @@ async def health_check() -> dict[str, Any]:
     except Exception:
         health_status["status"] = "degraded"
         health_status["databases"]["mongodb"] = "error: conexión MongoDB no disponible"
+
+    if settings.REDIS_URL:
+        redis_ok = await get_cache().ping()
+        health_status["cache"] = (
+            "redis: connected" if redis_ok else "redis: unavailable (fail-open)"
+        )
+    else:
+        health_status["cache"] = "memory"
 
     return health_status
 

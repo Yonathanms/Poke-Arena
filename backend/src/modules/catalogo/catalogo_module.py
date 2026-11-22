@@ -161,11 +161,53 @@ async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:
     return datos
 
 
-def router_ubicaciones(administrador: Any) -> Any:
+def crear_almacen_imagenes_ubicaciones() -> Any:
+    """Compone GridFS en el loop activo para el bucket de imágenes de ubicaciones."""
+    from gridfs import AsyncGridFSBucket
+
+    from src.database.mongodb.connection import get_mongo_db
+
+    from .gestion_ubicaciones.adapters.imagen_ubicacion_adapter import AlmacenImagenUbicacionGridFS
+
+    bucket = AsyncGridFSBucket(get_mongo_db(), bucket_name="location_images")
+    return AlmacenImagenUbicacionGridFS(bucket=bucket)
+
+
+async def _recuperar_media_ubicacion(location_id: str, variante: str) -> bytes | None:
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    from .gestion_ubicaciones.adapters.sql_ubicacion_repository import SqlFuenteUbicaciones
+
+    fuente = SqlFuenteUbicaciones(AsyncSessionLocal)
+    referencia = await fuente.obtener_referencia_imagen(location_id, variante)
+    if referencia is None:
+        return None
+    almacen = crear_almacen_imagenes_ubicaciones()
+    datos: bytes | None = await almacen.recuperar(referencia)
+    return datos
+
+
+async def recuperar_imagen_ubicacion(location_id: str) -> bytes | None:
+    """Recupera el WebP grande de una ubicación desde PostgreSQL + GridFS location_images."""
+    return await _recuperar_media_ubicacion(location_id, "image")
+
+
+async def recuperar_miniatura_ubicacion(location_id: str) -> bytes | None:
+    """Recupera el WebP de tablero (miniatura) de una ubicación desde PostgreSQL + GridFS."""
+    return await _recuperar_media_ubicacion(location_id, "thumbnail")
+
+
+def router_ubicaciones(administrador: Any, jugador: Any = None) -> Any:
     """Compone el router de ubicaciones con autorización y caso de uso."""
     from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router
 
-    return crear_router(administrador, crear_servicio_ubicaciones)
+    return crear_router(
+        administrador,
+        crear_servicio_ubicaciones,
+        jugador=jugador,
+        imagen_grande=recuperar_imagen_ubicacion,
+        miniatura=recuperar_miniatura_ubicacion,
+    )
 
 
 def componer_reconciliador_cartas() -> Any:
@@ -234,6 +276,8 @@ __all__ = [
     "listar_rarezas",
     "listar_tipos",
     "modelos_persistencia",
+    "recuperar_imagen_ubicacion",
+    "recuperar_miniatura_ubicacion",
     "router_cartas",
     "router_ubicaciones",
 ]

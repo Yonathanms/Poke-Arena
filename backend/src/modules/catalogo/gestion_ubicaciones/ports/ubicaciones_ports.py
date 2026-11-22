@@ -4,6 +4,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class ErrorImagenUbicacion(Exception):
+    """Fallo transitorio o de integridad al recuperar medios de ubicación."""
+
+
 class IUbicacionRepository(ABC):
     @abstractmethod
     async def verificar_idempotencia(self, actor_id: str, key: str) -> dict[str, Any] | None: ...
@@ -18,6 +22,9 @@ class IFuenteUbicacionesSql(ABC):
     @abstractmethod
     async def listar_ubicaciones(self) -> list[dict[str, Any]]: ...
 
+    @abstractmethod
+    async def obtener_referencia_imagen(self, location_id: str, variante: str) -> str | None: ...
+
 
 class IProyeccionUbicacionRepository(ABC):
     @abstractmethod
@@ -30,3 +37,8 @@ class IProyeccionUbicacionRepository(ABC):
 class IProcesadorImagenUbicacion(ABC):
     @abstractmethod
     async def procesar(self, archivo_bytes: bytes, content_type: str) -> tuple[str, str]: ...
+
+
+class IAlmacenImagenUbicacion(ABC):
+    @abstractmethod
+    async def recuperar(self, referencia: str) -> bytes | None: ...

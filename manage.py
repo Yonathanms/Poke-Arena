@@ -96,6 +96,18 @@ BEGIN
       GRANT SELECT, INSERT, UPDATE, DELETE ON public.catalog_card_types, public.catalog_card_rarities TO poke_api_user;
     END IF;
   END IF;
+  IF EXISTS (
+    SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'match_searches'
+  ) AND EXISTS (
+    SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'matches'
+  ) AND EXISTS (
+    SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'match_players'
+  ) THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.match_searches, public.matches, public.match_players TO orm_media_test;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'poke_api_user') THEN
+      GRANT SELECT, INSERT, UPDATE, DELETE ON public.match_searches, public.matches, public.match_players TO poke_api_user;
+    END IF;
+  END IF;
 END $$;
 """
 
@@ -220,9 +232,9 @@ def ensure_docker_prerequisites() -> None:
 
 
 def cmd_dbs(_args: argparse.Namespace) -> None:
-    """Inicia PostgreSQL 16 y MongoDB 7 en Docker asegurando prerrequisitos de red y volumen."""
+    """Inicia PostgreSQL 16, MongoDB 7 y Redis 7 en Docker asegurando prerrequisitos de red y volumen."""
     ensure_docker_prerequisites()
-    print("\n[Docker] Iniciando PostgreSQL (:5432) y MongoDB (:27017)...")
+    print("\n[Docker] Iniciando PostgreSQL (:5432), MongoDB (:27017) y Redis (:6379)...")
     run_cmd(["docker", "compose", "up", "-d", "--no-recreate"])
 
 
@@ -307,6 +319,7 @@ print('ID de usuario asignado:', uid)
     print("=" * 60)
     print("  • Base de datos SQL : PostgreSQL 16 (:5432) -> pokearena_alembic_frontend_dev")
     print("  • Base de datos NoSQL: MongoDB 7 (:27017) -> pokearena_catalog_frontend_dev")
+    print("  • Caché distribuido  : Redis 7 (:6379) -> Fail-Open (ADR-003)")
     print("  • Administrador Web : maestro-local")
     print(f"  • Contraseña Admin  : {password}")
     print("\n  Para iniciar el proyecto en dos terminales:")

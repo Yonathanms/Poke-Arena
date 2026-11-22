@@ -7,9 +7,14 @@ from hashlib import sha256
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ..ports.ubicaciones_ports import IFuenteUbicacionesSql, IUbicacionRepository
+from ..ports.ubicaciones_ports import (
+    ErrorImagenUbicacion,
+    IFuenteUbicacionesSql,
+    IUbicacionRepository,
+)
 
 _OPERACION = "POST:/api/v1/content/locations"
 
@@ -131,11 +136,54 @@ class SqlUbicacionRepository(IUbicacionRepository):
         return respuesta
 
 
+def _normalizar_referencia_gridfs(valor: Any) -> str | None:
+    if not isinstance(valor, str):
+        return None
+    limpio = valor.strip()
+    if not limpio:
+        return None
+    if limpio.startswith("gridfs:"):
+        return limpio
+    if len(limpio) == 24 and all(c in "0123456789abcdefABCDEF" for c in limpio):
+        return f"gridfs:{limpio}"
+    return None
+
+
 class SqlFuenteUbicaciones(IFuenteUbicacionesSql):
     """Lee el estado autoritativo de locations en PostgreSQL para reconciliación."""
 
     def __init__(self, factory: async_sessionmaker[AsyncSession]) -> None:
         self._factory = factory
+
+    async def obtener_referencia_imagen(self, location_id: str, variante: str) -> str | None:
+        try:
+            async with self._factory() as sesion:
+                fila = (
+                    await sesion.execute(
+                        text("""
+                            SELECT url_grande, url_tablero, imagen_grande_id, imagen_thumb_id
+                            FROM locations
+                            WHERE id = :id
+                        """),
+                        {"id": location_id},
+                    )
+                ).mappings().one_or_none()
+        except SQLAlchemyError:
+            raise ErrorImagenUbicacion("No se pudo consultar la imagen de ubicación.") from None
+
+        if fila is None:
+            return None
+
+        if variante == "thumbnail":
+            candidatos = (fila.get("url_tablero"), fila.get("imagen_thumb_id"))
+        else:
+            candidatos = (fila.get("url_grande"), fila.get("imagen_grande_id"))
+
+        for candidato in candidatos:
+            normalizada = _normalizar_referencia_gridfs(candidato)
+            if normalizada is not None:
+                return normalizada
+        return None
 
     async def listar_ubicaciones(self) -> list[dict[str, Any]]:
         async with self._factory() as sesion:

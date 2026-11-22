@@ -78,6 +78,33 @@ class Settings(EnvironmentSettings):
         "http://localhost:5173,http://localhost:3000,http://localhost:80,http://localhost"
     )
 
+    # Caché distribuido (ADR-003)
+    REDIS_URL: str | None = Field(default=None, repr=False, exclude=True)
+    CACHE_TIMEOUT_SECONDS: float = Field(default=0.15, ge=0.05, le=2.0)
+
+    # Matchmaking y Partidas (Sprint 3)
+    MATCHMAKING_HEARTBEAT_TIMEOUT_SECONDS: int = Field(default=30, ge=5, le=300)
+    MATCHMAKING_BOT_OFFER_SECONDS: int = Field(default=60, ge=5, le=600)
+    MATCHMAKING_MAX_ELO_DIFF: int = Field(default=1000, ge=100, le=5000)
+    MATCH_TURN_DURATION_SECONDS: int = Field(default=30, ge=10, le=300)
+    MATCH_RANKED_MIN_CUBES: int = Field(default=8, ge=0)
+    MATCH_RANKED_INITIAL_BET: int = Field(default=4, ge=0)
+
+    @field_validator("REDIS_URL", mode="before")
+    @classmethod
+    def validate_redis_url(cls, value: Any) -> str | None:
+        """Normaliza cadenas vacías a None y exige esquema Redis válido."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if not trimmed:
+                return None
+            if not trimmed.startswith(("redis://", "rediss://", "unix://")):
+                raise ValueError("Configure una URL válida para Redis")
+            return trimmed
+        raise ValueError("Configure una URL válida para Redis")
+
     @model_validator(mode="after")
     def validate_local_identity(self) -> "Settings":
         """El login local requiere opt-in y una base de validación en loopback."""

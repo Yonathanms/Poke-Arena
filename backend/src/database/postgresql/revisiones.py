@@ -2,7 +2,7 @@
 
 REVISION_IDENTIDAD_LOCAL = "1g_local_master_admin"
 REVISION_APERTURA_INICIAL = "013_initial_pack_opened_at"
-REVISION_TIPO_CUENTA = "017_drop_outbox_tables"
+REVISION_TIPO_CUENTA = "018_matchmaking_and_matches"
 REVISIONES_IDENTIDAD_LOCAL = frozenset({
     REVISION_IDENTIDAD_LOCAL,
     "011_locations_full",
@@ -11,6 +11,7 @@ REVISIONES_IDENTIDAD_LOCAL = frozenset({
     "014_identity_account_immutable",
     "015_player_decks",
     "016_card_types_and_rarities",
+    "017_drop_outbox_tables",
     REVISION_TIPO_CUENTA,
 })
 REVISIONES_CARTAS = REVISIONES_IDENTIDAD_LOCAL | {"1b2b_card_image_integrity"}
