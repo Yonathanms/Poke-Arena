@@ -5,14 +5,6 @@ import math
 from typing import Any
 from uuid import uuid4
 
-from src.modules.jugadores.partidas.domain.partida_model import (
-    CatalogoPartidaInvalidoError,
-    ParticipantePartidaInput,
-    PartidaConflictoActivaError,
-    PartidaCreada,
-    PartidaNoDisponibleError,
-)
-from src.modules.jugadores.partidas.services.partidas_service import PartidasService
 from src.modules.motor_juego.domain.maquina_estados import (
     MAQUINA_ESTADOS_BUSQUEDA,
     EstadoBusqueda,
@@ -20,6 +12,14 @@ from src.modules.motor_juego.domain.maquina_estados import (
     TransicionInvalida,
 )
 from src.modules.motor_juego.domain.modelos_partida import UbicacionesInsuficientesError
+from src.modules.partidas_emparejamiento.partidas.domain.partida_model import (
+    CatalogoPartidaInvalidoError,
+    ParticipantePartidaInput,
+    PartidaConflictoActivaError,
+    PartidaCreada,
+    PartidaNoDisponibleError,
+)
+from src.modules.partidas_emparejamiento.partidas.services.partidas_service import PartidasService
 from src.shared.cache import CachePort
 from src.shared.http_etag import coincide_if_none_match, generar_etag
 

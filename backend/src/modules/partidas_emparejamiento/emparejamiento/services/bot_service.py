@@ -4,9 +4,13 @@ import random
 import secrets
 from typing import Any
 
-from src.modules.jugadores.partidas.domain.partida_model import ParticipantePartidaInput
-from src.modules.jugadores.partidas.ports.partida_ports import FuenteCatalogoPartidaPort
 from src.modules.motor_juego.domain.modelos_partida import TAMANO_DECK_PARTIDA
+from src.modules.partidas_emparejamiento.partidas.domain.partida_model import (
+    ParticipantePartidaInput,
+)
+from src.modules.partidas_emparejamiento.partidas.ports.partida_ports import (
+    FuenteCatalogoPartidaPort,
+)
 
 from ..domain.emparejamiento_model import BotCatalogoInsuficienteError
 

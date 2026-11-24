@@ -18,12 +18,15 @@ from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA
 from src.modules.catalogo.catalogo_module import router_cartas, router_ubicaciones
 from src.modules.identidad import identidad_module
 from src.modules.jugadores.jugadores_module import (
+    crear_router_decks_jugador,
     provisionar_google,
+    requerir_jugador_habilitado,
     router_coleccion,
-    router_decks,
-    router_emparejamiento,
     router_paquete,
-    router_partidas,
+)
+from src.modules.partidas_emparejamiento.partidas_emparejamiento_module import (
+    crear_routers_partidas_emparejamiento,
+    crear_verificador_deck_en_uso,
 )
 from src.shared.cache import close_cache, get_cache
 from src.shared.config import get_settings
@@ -34,6 +37,7 @@ from src.shared.http_module import registrar_errores
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Ciclo de vida de FastAPI con worker reconciliador periódico SQL -> MongoDB."""
     import asyncio
+
     from src.database.outbox_worker import iniciar_bucle_reconciliacion
     from src.database.postgresql.connection import engine
 
@@ -102,7 +106,13 @@ def crear_app() -> FastAPI:
     )
     app.include_router(router_paquete, prefix=settings.API_V1_PREFIX)
     app.include_router(router_coleccion, prefix=settings.API_V1_PREFIX)
-    app.include_router(router_decks, prefix=settings.API_V1_PREFIX)
+    app.include_router(
+        crear_router_decks_jugador(crear_verificador_deck_en_uso),
+        prefix=settings.API_V1_PREFIX,
+    )
+    router_emparejamiento, router_partidas = crear_routers_partidas_emparejamiento(
+        requerir_jugador_habilitado
+    )
     app.include_router(router_emparejamiento, prefix=settings.API_V1_PREFIX)
     app.include_router(router_partidas, prefix=settings.API_V1_PREFIX)
     app.include_router(
