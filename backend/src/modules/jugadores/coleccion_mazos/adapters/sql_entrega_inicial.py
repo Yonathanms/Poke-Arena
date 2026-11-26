@@ -52,18 +52,36 @@ class SqlTransaccionEntregaInicial:
         return PerfilProvision(*fila) if fila is not None else None
 
     async def cartas_del_paquete(self, usuario_id: str) -> tuple[CartaPaquete, ...]:
-        """Lee el inventario y su catálogo en orden estable."""
+        """Lee el inventario asignado junto con metadatos completos de catálogo."""
         filas = await self._sesion.execute(
             text("""
-                SELECT c.id, c.code, c.name, p.quantity
-                FROM player_cards p JOIN catalog_cards c ON c.id = p.card_id
+                SELECT c.id, c.code, c.name, p.quantity,
+                       c.card_type, c.rarity, c.cost, c.power,
+                       a.code AS ability_code, a.name AS ability_name
+                FROM player_cards p
+                JOIN catalog_cards c ON c.id = p.card_id
+                JOIN catalog_abilities a ON a.id = c.ability_id
                 WHERE p.user_id = :usuario
-                ORDER BY c.id
+                ORDER BY c.card_type, c.code, c.id
                 LIMIT :maximo
             """),
             {"usuario": usuario_id, "maximo": INITIAL_CARD_COUNT + 1},
         )
-        return tuple(CartaPaquete(*fila) for fila in filas)
+        return tuple(
+            CartaPaquete(
+                id=fila[0],
+                code=fila[1],
+                name=fila[2],
+                quantity=int(fila[3]),
+                card_type=fila[4],
+                rarity=fila[5],
+                cost=int(fila[6]),
+                power=int(fila[7]),
+                ability_code=fila[8],
+                ability_name=fila[9],
+            )
+            for fila in filas
+        )
 
     async def movimiento_inicial_integro(self, usuario_id: str) -> bool:
         """Verifica que existe exactamente un movimiento y tiene los datos iniciales."""

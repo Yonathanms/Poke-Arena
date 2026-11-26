@@ -3,8 +3,11 @@
 from ..domain.entrega_inicial_model import (
     INITIAL_CARD_COUNT,
     INITIAL_CUBES,
+    MAQUINA_ESTADOS_PAQUETE,
     CartaPaquete,
+    EstadoPaquete,
     EstadoProvisionInconsistente,
+    EventoPaquete,
     ResultadoProvision,
 )
 from ..ports.entrega_inicial_ports import TransaccionEntregaInicial, UnidadEntregaInicial
@@ -54,5 +57,8 @@ class EntregaInicial:
             cartas = await tx.seleccionar_cartas()
             if len(cartas) < INITIAL_CARD_COUNT:
                 return ResultadoProvision.INSUFFICIENT_CATALOG
+            MAQUINA_ESTADOS_PAQUETE.transicionar(
+                EstadoPaquete.PENDING_CATALOG, EventoPaquete.PROVISIONAR
+            )
             await tx.registrar_entrega(usuario_id, cartas)
             return ResultadoProvision.GRANTED

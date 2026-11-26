@@ -1,8 +1,10 @@
-"""Invariantes y resultados de la provisión de colección inicial."""
+"""Invariantes, entidades y máquina de estados de la colección inicial."""
 
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+
+from src.shared.maquina_estados import MaquinaEstados
 
 INITIAL_CARD_COUNT = 15
 INITIAL_CUBES = 1_000
@@ -43,6 +45,20 @@ class EstadoPaquete(StrEnum):
     COMPLETED = "COMPLETED"
 
 
+class EventoPaquete(StrEnum):
+    """Eventos válidos del ciclo de vida del paquete inicial."""
+
+    PROVISIONAR = "PROVISIONAR"
+    ABRIR = "ABRIR"
+
+
+MAQUINA_ESTADOS_PAQUETE: MaquinaEstados[EstadoPaquete, EventoPaquete] = MaquinaEstados({
+    (EstadoPaquete.PENDING_CATALOG, EventoPaquete.PROVISIONAR): EstadoPaquete.READY_TO_OPEN,
+    (EstadoPaquete.READY_TO_OPEN, EventoPaquete.ABRIR): EstadoPaquete.COMPLETED,
+    (EstadoPaquete.COMPLETED, EventoPaquete.ABRIR): EstadoPaquete.COMPLETED,
+})
+
+
 @dataclass(frozen=True, slots=True)
 class CartaPaquete:
     """Carta realmente asignada al perfil, con sus datos públicos de catálogo."""
@@ -50,6 +66,24 @@ class CartaPaquete:
     id: str
     code: str
     name: str
+    quantity: int
+    card_type: str = "FUE"
+    rarity: str = "COMUN"
+    cost: int = 0
+    power: int = 0
+    ability_code: str = "HAB-000"
+    ability_name: str = "Sin Habilidad"
+
+
+@dataclass(frozen=True, slots=True)
+class CartaColeccion:
+    """Carta perteneciente a la colección del jugador."""
+
+    id: str
+    code: str
+    name: str
+    card_type: str
+    rarity: str
     quantity: int
 
 

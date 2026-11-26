@@ -1,6 +1,7 @@
 """Servicio Crear Carta. Coordina persistencia e imágenes sin transporte HTTP."""
 
 import json
+import logging
 from asyncio import to_thread
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from ..domain.imagen_model import (
     ReferenciasImagen,
     huella_imagen,
 )
+from ..domain.proyeccion_carta import ProyeccionCarta
 from ..ports.cartas_ports import CartasRepositoryPort, ErrorPersistencia
 from ..ports.creacion_ports import (
     COMPENSACION_PENDIENTE,
@@ -43,6 +45,9 @@ from ..ports.imagen_ports import (
     ImagenInvalida,
     ProcesadorImagenPort,
 )
+from ..ports.proyeccion_ports import ProyeccionCartasPort
+
+logger = logging.getLogger("pokearena.catalogo.cartas")
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,18 +236,20 @@ async def _habilidad(
 
 
 class CrearCarta:
-    """Caso de uso con reserva durable y confirmación SQL posterior a GridFS."""
+    """Caso de uso con reserva durable, commit ACID en SQL y sincronización directa a MongoDB."""
 
     def __init__(
         self,
         coordinacion: CoordinacionCreacionPort,
         procesador: ProcesadorImagenPort,
         almacen: AlmacenImagenPort,
+        proyeccion: ProyeccionCartasPort | None = None,
     ) -> None:
-        """Recibe coordinación SQL y los puertos de medios de 1C."""
+        """Recibe coordinación SQL, puertos de medios y proyección directa MongoDB."""
         self._coordinacion = coordinacion
         self._procesador = procesador
         self._almacen = almacen
+        self._proyeccion = proyeccion
 
     async def ejecutar(
         self,
@@ -380,7 +387,7 @@ class CrearCarta:
                 "image_id": operacion_id,
                 "image_status": "READY",
             }
-            evento: dict[str, str | int] = {
+            campos_proyeccion: dict[str, Any] = {
                 "id": carta.id,
                 "code": carta.code,
                 "image_id": operacion_id,
@@ -392,9 +399,24 @@ class CrearCarta:
                 "rarity": carta.rarity,
                 "ability_id": habilidad.id,
                 "ability_code": habilidad.code,
+                "ability_name": habilidad.name,
             }
-            await tx.agregar_evento(carta, evento)
+            proyeccion_carta = ProyeccionCarta(carta.id, carta.version, campos_proyeccion)
             await tx.confirmar(operacion_id, respuesta)
+
+        # Tras el commit ACID en PostgreSQL, proyectar directamente en MongoDB (best-effort).
+        # Si MongoDB falla temporalmente, el worker reconciliador restaurará la concordancia.
+        if self._proyeccion is not None:
+            try:
+                await self._proyeccion.guardar(proyeccion_carta)
+            except Exception as exc:
+                logger.warning(
+                    "Proyección directa en MongoDB falló para carta %s (%s); "
+                    "quedará pendiente para el reconciliador periódico: %s",
+                    carta.id,
+                    carta.code,
+                    exc,
+                )
         return ResultadoCrearCarta(operacion_id, codigo, operacion_id, operacion_id)
 
     async def compensar(

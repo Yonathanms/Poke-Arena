@@ -1,85 +1,95 @@
-"""Orquesta una entrega at-least-once sin transacción SQL durante MongoDB."""
+"""Servicio de reconciliación periódica de cartas (PostgreSQL -> MongoDB)."""
 
-import asyncio
 import logging
-from time import monotonic
-from uuid import uuid4
+from dataclasses import dataclass
+from typing import Any
 
-from ..domain.proyeccion_carta import (
-    EventoIncompatible,
-    EventoReclamado,
-    OutboxTemporal,
-    ProyeccionTemporal,
-)
-from ..ports.proyeccion_ports import OutboxCartasPort, ProyeccionCartasPort
+from ..domain.proyeccion_carta import EventoIncompatible, ProyeccionCarta, ProyeccionTemporal
+from ..ports.proyeccion_ports import FuenteCartasSqlPort, ProyeccionCartasPort
 
-logger = logging.getLogger("pokearena.outbox_worker")
+logger = logging.getLogger("pokearena.reconciliador")
 
 
-def demora_reintento(intento: int, tope: int) -> int:
-    """Calcula backoff exponencial en segundos con un límite fijo."""
-    return min(1 << min(intento, 16), tope)
+@dataclass(frozen=True, slots=True)
+class ResultadoReconciliacion:
+    """Resumen cuantitativo de un ciclo de reconciliación para una entidad."""
+
+    entidad: str
+    total_sql: int
+    sincronizadas: int
+    omitidas: int
+    errores: int
 
 
-class ProcesadorOutbox:
-    """Consume solo CardCreated a través de los puertos de proyección."""
+def _requiere_sincronizacion(esperado: ProyeccionCarta, actual: dict[str, Any] | None) -> bool:
+    """Compara el snapshot autoritativo SQL contra el documento actual en MongoDB."""
+    if actual is None:
+        return True
+    doc_esperado = esperado.documento()
+    for clave, valor in doc_esperado.items():
+        if clave == "_id":
+            continue
+        actual_valor = actual.get(clave)
+        if actual_valor != valor or (
+            isinstance(valor, int)
+            and not isinstance(valor, bool)
+            and isinstance(actual_valor, bool)
+        ):
+            return True
+    return False
 
-    def __init__(
-        self, outbox: OutboxCartasPort, mongo: ProyeccionCartasPort, max_demora: int
-    ) -> None:
-        """Inyecta reclamación, proyección y tope de reintentos."""
-        self._outbox, self._mongo, self._max_demora = outbox, mongo, max_demora
-        self._worker = str(uuid4())
 
-    async def _procesar(self, evento: EventoReclamado) -> bool:
-        """Separa el resultado Mongo del resultado del commit de confirmación."""
-        inicio = monotonic()
-        error = None
-        demora = None
-        try:
-            carta = await self._outbox.proyeccion(evento, evento.contenido())
-            await self._mongo.guardar(carta)
-        except EventoIncompatible as exc:
-            error = str(exc)
-        except (OutboxTemporal, ProyeccionTemporal):
-            error = "dependencia_no_confirmada"
-            demora = demora_reintento(evento.intento, self._max_demora)
+class ReconciliadorCartas:
+    """Verifica concordancia entre catalog_cards (SQL) y cards_projection (MongoDB)."""
 
-        try:
-            vigente = await self._outbox.resolver(evento, error, demora)
-            estado = (
-                "procesado"
-                if vigente and error is None
-                else ("fallo_registrado" if vigente else "lease_no_vigente")
-            )
-        except OutboxTemporal:
-            # El commit puede haber tenido éxito. El lease y el estado durable deciden.
-            estado = "confirmacion_incierta"
-        logger.info(
-            "worker=%s evento=%r tipo=%r carta=%r correlacion=%r intento=%d "
-            "estado=%s error=%s duracion_ms=%d",
-            self._worker,
-            evento.id,
-            evento.tipo,
-            evento.agregado,
-            evento.correlacion,
-            evento.intento,
-            estado,
-            error,
-            int((monotonic() - inicio) * 1000),
+    def __init__(self, fuente_sql: FuenteCartasSqlPort, destino_mongo: ProyeccionCartasPort) -> None:
+        """Inyecta los puertos de lectura SQL y proyección MongoDB."""
+        self._fuente_sql = fuente_sql
+        self._destino_mongo = destino_mongo
+        self._indices_verificados = False
+
+    async def conciliar(self) -> ResultadoReconciliacion:
+        """Sincroniza hacia MongoDB únicamente las cartas faltantes o desactualizadas."""
+        if not self._indices_verificados:
+            await self._destino_mongo.asegurar_indices()
+            self._indices_verificados = True
+
+        cartas_sql = await self._fuente_sql.listar_cartas_listas()
+        existentes_mongo = await self._destino_mongo.listar_proyecciones()
+
+        sincronizadas = 0
+        omitidas = 0
+        errores = 0
+
+        for carta in cartas_sql:
+            doc_actual = existentes_mongo.get(carta.id)
+            if not _requiere_sincronizacion(carta, doc_actual):
+                omitidas += 1
+                continue
+            try:
+                await self._destino_mongo.guardar(carta)
+                sincronizadas += 1
+            except (EventoIncompatible, ProyeccionTemporal) as exc:
+                errores += 1
+                logger.warning(
+                    "reconciliacion_cartas error carta=%s codigo=%s detalle=%s",
+                    carta.id,
+                    carta.campos.get("code"),
+                    exc,
+                )
+
+        resultado = ResultadoReconciliacion(
+            entidad="cards",
+            total_sql=len(cartas_sql),
+            sincronizadas=sincronizadas,
+            omitidas=omitidas,
+            errores=errores,
         )
-        return estado == "procesado"
-
-    async def lote(self, limite: int, concurrencia: int, detener: asyncio.Event) -> int:
-        """Reclama únicamente el grupo que puede comenzar en ese momento."""
-        procesados = 0
-        restantes = limite
-        while restantes > 0 and not detener.is_set():
-            reclamados = await self._outbox.reclamar(min(restantes, concurrencia))
-            if not reclamados:
-                break
-            async with asyncio.TaskGroup() as grupo:
-                tareas = [grupo.create_task(self._procesar(evento)) for evento in reclamados]
-            procesados += sum(tarea.result() for tarea in tareas)
-            restantes -= len(reclamados)
-        return procesados
+        logger.info(
+            "reconciliacion_cartas total_sql=%d sincronizadas=%d omitidas=%d errores=%d",
+            resultado.total_sql,
+            resultado.sincronizadas,
+            resultado.omitidas,
+            resultado.errores,
+        )
+        return resultado

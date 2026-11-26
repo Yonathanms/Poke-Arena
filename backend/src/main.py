@@ -17,43 +17,36 @@ from src.database.postgresql.destino_original import IDENTIDAD_SQL, destino_orig
 from src.database.postgresql.revisiones import REVISION_TIPO_CUENTA
 from src.modules.catalogo.catalogo_module import router_cartas, router_ubicaciones
 from src.modules.identidad import identidad_module
-from src.modules.jugadores.jugadores_module import provisionar_google, router_coleccion, router_decks, router_paquete
+from src.modules.jugadores.jugadores_module import (
+    crear_router_decks_jugador,
+    provisionar_google,
+    requerir_jugador_habilitado,
+    router_coleccion,
+    router_paquete,
+)
+from src.modules.partidas_emparejamiento.partidas_emparejamiento_module import (
+    crear_routers_partidas_emparejamiento,
+    crear_verificador_deck_en_uso,
+)
+from src.shared.cache import close_cache, get_cache
 from src.shared.config import get_settings
 from src.shared.http_module import registrar_errores
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Ciclo de vida de la aplicación FastAPI con sincronización outbox automática."""
+    """Ciclo de vida de FastAPI con worker reconciliador periódico SQL -> MongoDB."""
     import asyncio
-    import logging
+
+    from src.database.outbox_worker import iniciar_bucle_reconciliacion
     from src.database.postgresql.connection import engine
-    from src.modules.catalogo.catalogo_module import componer_procesador_outbox
 
-    logger = logging.getLogger("pokearena.outbox_worker")
-    detener_outbox = asyncio.Event()
-    tarea_outbox: asyncio.Task[None] | None = None
-
-    async def _bucle_outbox():
-        try:
-            procesador, almacen, err_temp = componer_procesador_outbox()
-            await almacen.verificar_indices()
-            while not detener_outbox.is_set():
-                try:
-                    await procesador.lote(50, 5, detener_outbox)
-                except Exception as ex:
-                    logger.debug("Reintento outbox en segundo plano: %s", ex)
-                try:
-                    await asyncio.wait_for(detener_outbox.wait(), timeout=1.5)
-                except TimeoutError:
-                    pass
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.warning("Worker outbox en segundo plano interrumpido: %s", e)
+    detener_reconciliador = asyncio.Event()
+    tarea_reconciliador: asyncio.Task[None] | None = None
 
     try:
-        if get_settings().ORIGINAL_RUNTIME == "api":
+        settings = get_settings()
+        if settings.ORIGINAL_RUNTIME == "api":
             async with engine.connect() as conn:
                 identidad = tuple((await conn.execute(IDENTIDAD_SQL)).one())
                 if (
@@ -64,16 +57,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     raise ValueError("destino_postgresql_original_no_autorizado")
             await verificar_mongo_original("api")
 
-        tarea_outbox = asyncio.create_task(_bucle_outbox())
+        tarea_reconciliador = asyncio.create_task(
+            iniciar_bucle_reconciliacion(
+                detener_reconciliador,
+                settings.RECONCILIATION_INTERVAL_SECONDS,
+            )
+        )
         yield
     finally:
-        detener_outbox.set()
-        if tarea_outbox is not None:
-            tarea_outbox.cancel()
+        detener_reconciliador.set()
+        if tarea_reconciliador is not None:
+            tarea_reconciliador.cancel()
             try:
-                await asyncio.wait_for(tarea_outbox, timeout=2.0)
+                await asyncio.wait_for(tarea_reconciliador, timeout=2.0)
             except (asyncio.CancelledError, TimeoutError, Exception):
                 pass
+        await close_cache()
         await close_mongo_connection()
         await engine.dispose()
 
@@ -98,8 +97,8 @@ def crear_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
-        expose_headers=["X-Correlation-ID", "Retry-After"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "If-None-Match"],
+        expose_headers=["X-Correlation-ID", "Retry-After", "ETag", "X-Match-ID"],
     )
     registrar_errores(app)
     app.include_router(
@@ -107,7 +106,15 @@ def crear_app() -> FastAPI:
     )
     app.include_router(router_paquete, prefix=settings.API_V1_PREFIX)
     app.include_router(router_coleccion, prefix=settings.API_V1_PREFIX)
-    app.include_router(router_decks, prefix=settings.API_V1_PREFIX)
+    app.include_router(
+        crear_router_decks_jugador(crear_verificador_deck_en_uso),
+        prefix=settings.API_V1_PREFIX,
+    )
+    router_emparejamiento, router_partidas = crear_routers_partidas_emparejamiento(
+        requerir_jugador_habilitado
+    )
+    app.include_router(router_emparejamiento, prefix=settings.API_V1_PREFIX)
+    app.include_router(router_partidas, prefix=settings.API_V1_PREFIX)
     app.include_router(
         router_cartas(
             identidad_module.requerir_administrador,
@@ -116,7 +123,10 @@ def crear_app() -> FastAPI:
         prefix=settings.API_V1_PREFIX,
     )
     app.include_router(
-        router_ubicaciones(identidad_module.requerir_administrador),
+        router_ubicaciones(
+            identidad_module.requerir_administrador,
+            identidad_module.requerir_jugador,
+        ),
         prefix=settings.API_V1_PREFIX,
     )
     app.add_api_route(
@@ -131,12 +141,13 @@ def crear_app() -> FastAPI:
 
 
 async def health_check() -> dict[str, Any]:
-    """Prueba ambos motores sin exponer diagnósticos de conexión."""
+    """Prueba motores y caché sin exponer diagnósticos ni secretos de conexión."""
     from src.database.postgresql.connection import engine
 
+    settings = get_settings()
     health_status: dict[str, Any] = {
         "status": "healthy",
-        "environment": get_settings().ENVIRONMENT,
+        "environment": settings.ENVIRONMENT,
         "databases": {},
     }
 
@@ -155,6 +166,14 @@ async def health_check() -> dict[str, Any]:
     except Exception:
         health_status["status"] = "degraded"
         health_status["databases"]["mongodb"] = "error: conexión MongoDB no disponible"
+
+    if settings.REDIS_URL:
+        redis_ok = await get_cache().ping()
+        health_status["cache"] = (
+            "redis: connected" if redis_ok else "redis: unavailable (fail-open)"
+        )
+    else:
+        health_status["cache"] = "memory"
 
     return health_status
 

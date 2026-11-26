@@ -244,6 +244,8 @@ export async function submitCreateCardMultipart(
     status: response.status,
     data: Object.freeze({ ...response.data }),
     correlationId: response.correlationId,
+    etag: response.etag,
+    notModified: response.notModified,
   };
 }
 

@@ -185,9 +185,7 @@ class SqlRepositorioDecks:
         )
 
     async def listar_decks(self, user_id: str) -> list[DeckResumen]:
-        from src.database.postgresql.connection import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as sesion:
+        async with self._factory() as sesion:
             filas = await sesion.execute(
                 text("""
                     SELECT d.id, d.name, COUNT(dc.card_id) AS card_count, d.created_at
@@ -205,9 +203,7 @@ class SqlRepositorioDecks:
             ]
 
     async def contar_decks(self, user_id: str) -> int:
-        from src.database.postgresql.connection import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as sesion:
+        async with self._factory() as sesion:
             resultado = await sesion.scalar(
                 text("SELECT COUNT(*) FROM player_decks WHERE user_id = :user"),
                 {"user": user_id},
@@ -215,9 +211,7 @@ class SqlRepositorioDecks:
             return int(resultado or 0)
 
     async def obtener_deck(self, user_id: str, deck_id: str) -> Deck:
-        from src.database.postgresql.connection import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as sesion:
+        async with self._factory() as sesion:
             fila = (await sesion.execute(
                 text("""
                     SELECT id, user_id, name, created_at FROM player_decks

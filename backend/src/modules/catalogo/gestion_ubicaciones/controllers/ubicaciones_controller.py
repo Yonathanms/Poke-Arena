@@ -1,30 +1,115 @@
-"""Endpoint POST /api/v1/content/locations con multipart y autorización."""
+"""Endpoint HTTP POST /api/v1/content/locations desacoplado de adaptadores de BD."""
 
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, File, Form, Header, Path, Response, UploadFile, status
 
-from src.database.postgresql.connection import get_db
 from src.shared.http_module import problema, respuestas_documentadas
 
-from ..adapters.imagen_ubicacion_adapter import ImagenUbicacionAdapter
-from ..adapters.sql_ubicacion_repository import SqlUbicacionRepository
+from ..ports.ubicaciones_ports import ErrorImagenUbicacion
 from ..services.ubicaciones_service import UbicacionesService
 from .ubicaciones_dtos import UbicacionResponseDTO
 
 
-def _get_service(db: AsyncSession) -> UbicacionesService:
-    imagen_adapter = ImagenUbicacionAdapter()
-    sql_repo = SqlUbicacionRepository(db)
-    return UbicacionesService(imagen_adapter, sql_repo)
+def _respuesta_imagen_ubicacion(
+    datos: bytes | None,
+    codigo_no_encontrada: str,
+    mensaje: str,
+) -> Response:
+    if datos is None:
+        raise problema(404, codigo_no_encontrada, mensaje)
+    media_type = "image/webp" if datos[:4] == b"RIFF" and datos[8:12] == b"WEBP" else "image/png"
+    return Response(
+        datos,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=300", "Vary": "Authorization"},
+    )
 
 
-def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
-    """Compone el router de ubicaciones inyectando el guard de autorización oficial."""
+def crear_router(
+    administrador: Callable[..., Awaitable[Any]],
+    servicio: Callable[[], UbicacionesService],
+    jugador: Callable[..., Awaitable[Any]] | None = None,
+    imagen_grande: Callable[[str], Awaitable[bytes | None]] | None = None,
+    miniatura: Callable[[str], Awaitable[bytes | None]] | None = None,
+) -> APIRouter:
+    """Compone el router de ubicaciones inyectando autorización, caso de uso y lectura de medios."""
     router = APIRouter()
+    auth_jugador = jugador if jugador is not None else administrador
+
+    if imagen_grande is not None:
+        @router.get(
+            "/content/locations/{location_id}/image",
+            response_class=Response,
+            tags=["Content Locations"],
+            summary="Obtener imagen completa WebP de una ubicación",
+            responses={
+                200: {
+                    "content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}},
+                },
+                **respuestas_documentadas({
+                    401: "Sesión requerida",
+                    403: "Rol insuficiente",
+                    404: "Imagen de ubicación no encontrada",
+                    503: "Medios no disponibles",
+                }),
+            },
+        )
+        async def obtener_imagen_ubicacion(
+            location_id: Annotated[str, Path(min_length=1, max_length=36)],
+            _actor: Any = Depends(auth_jugador),
+        ) -> Response:
+            try:
+                datos = await imagen_grande(location_id)
+            except ErrorImagenUbicacion:
+                raise problema(
+                    503,
+                    "imagen_ubicacion_no_disponible",
+                    "Imagen de ubicación no disponible.",
+                ) from None
+            return _respuesta_imagen_ubicacion(
+                datos,
+                "imagen_ubicacion_no_encontrada",
+                "Imagen de ubicación no encontrada.",
+            )
+
+    if miniatura is not None:
+        @router.get(
+            "/content/locations/{location_id}/thumbnail",
+            response_class=Response,
+            tags=["Content Locations"],
+            summary="Obtener miniatura WebP de una ubicación",
+            responses={
+                200: {
+                    "content": {"image/webp": {"schema": {"type": "string", "format": "binary"}}},
+                },
+                **respuestas_documentadas({
+                    401: "Sesión requerida",
+                    403: "Rol insuficiente",
+                    404: "Miniatura de ubicación no encontrada",
+                    503: "Medios no disponibles",
+                }),
+            },
+        )
+        async def obtener_miniatura_ubicacion(
+            location_id: Annotated[str, Path(min_length=1, max_length=36)],
+            _actor: Any = Depends(auth_jugador),
+        ) -> Response:
+            try:
+                datos = await miniatura(location_id)
+            except ErrorImagenUbicacion:
+                raise problema(
+                    503,
+                    "miniatura_ubicacion_no_disponible",
+                    "Miniatura de ubicación no disponible.",
+                ) from None
+            return _respuesta_imagen_ubicacion(
+                datos,
+                "miniatura_ubicacion_no_encontrada",
+                "Miniatura de ubicación no encontrada.",
+            )
 
     @router.post(
         "/content/locations",
@@ -47,7 +132,6 @@ def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
         efecto_params: str = Form(...),
         imagen: UploadFile = File(...),
         idempotency_key: str = Header(..., alias="idempotency-key"),
-        db: AsyncSession = Depends(get_db),
         _admin: Any = Depends(administrador),
     ) -> UbicacionResponseDTO:
         try:
@@ -70,15 +154,15 @@ def crear_router(administrador: Callable[..., Awaitable[Any]]) -> APIRouter:
         }
 
         imagen_bytes = await imagen.read()
-        service = _get_service(db)
+        actor_id = getattr(_admin, "id", None) or str(_admin)
 
-        resultado = await service.crear(
-            datos, imagen_bytes, imagen.content_type or "", idempotency_key
+        resultado = await servicio().crear(
+            datos,
+            imagen_bytes,
+            imagen.content_type or "",
+            idempotency_key,
+            actor_id=actor_id,
         )
         return UbicacionResponseDTO(**resultado)
 
     return router
-
-
-# Router por defecto para compatibilidad
-router = crear_router(lambda: "admin-default")

@@ -4,7 +4,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Protocol
 
-from ..domain.entrega_inicial_model import CartaPaquete, PerfilProvision
+from ..domain.entrega_inicial_model import CartaColeccion, CartaPaquete, PerfilProvision
 
 
 class TransaccionEntregaInicial(Protocol):
@@ -52,4 +52,12 @@ class UnidadEntregaInicial(Protocol):
 
     def transaccion(self) -> AbstractAsyncContextManager[TransaccionEntregaInicial]:
         """Confirma al salir correctamente o revierte al propagar un error."""
+        ...
+
+
+class ColeccionJugadorPort(Protocol):
+    """Puerto de lectura de la colección de cartas del jugador."""
+
+    async def listar_cartas(self, usuario_id: str) -> list[CartaColeccion]:
+        """Retorna las cartas propias del jugador ordenadas por tipo y nombre."""
         ...

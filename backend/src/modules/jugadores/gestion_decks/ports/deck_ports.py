@@ -43,3 +43,11 @@ class RepositorioDecks(Protocol):
     async def eliminar_deck(self, user_id: str, deck_id: str) -> None:
         """Elimina el deck. Lanza DeckNoEncontrado si no existe o no pertenece."""
         ...
+
+
+class VerificadorDeckEnUsoPort(Protocol):
+    """Puerto invertido para verificar si un deck está bloqueado en búsqueda o partida."""
+
+    async def esta_en_uso(self, user_id: str, deck_id: str) -> bool:
+        """Retorna True si el deck está en una búsqueda abierta o partida activa."""
+        ...

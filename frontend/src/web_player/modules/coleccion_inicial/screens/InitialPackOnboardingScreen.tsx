@@ -18,17 +18,13 @@ import { AlertBanner } from "../../../../shared/components/AlertBanner";
 import { VistaPrincipalScreen } from "../../vista_principal/screens/VistaPrincipalScreen";
 import { PackOpeningExperience } from "../components/PackOpeningExperience";
 import { PendingCatalogNotice } from "../components/PendingCatalogNotice";
-import {
-  useInitialPackOnboarding,
-  type InitialPackOnboardingController,
-} from "../hooks/useInitialPackOnboarding";
+import { useInitialPackOnboarding } from "../hooks/useInitialPackOnboarding";
 import pokemonIcon from "../../../../images/icons/icono_pokemon.png";
 
 export interface InitialPackOnboardingScreenProps {
   readonly onLogout: () => void | Promise<unknown>;
   readonly isLoggingOut?: boolean;
   readonly onCompleted?: () => void;
-  readonly controller?: InitialPackOnboardingController;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -36,7 +32,6 @@ export function InitialPackOnboardingScreen({
   onLogout,
   isLoggingOut = false,
   onCompleted,
-  controller,
   fetchImpl,
 }: InitialPackOnboardingScreenProps): React.ReactElement {
   const {
@@ -53,7 +48,7 @@ export function InitialPackOnboardingScreen({
     refreshStatus,
     completeReveal,
     clearError,
-  } = useInitialPackOnboarding({ controller, fetchImpl });
+  } = useInitialPackOnboarding({ fetchImpl });
 
   // ---------------------------------------------------------------------------
   // 1. ESTADO COMPLETED: El jugador completó el onboarding (o recargó con paquete ya abierto)

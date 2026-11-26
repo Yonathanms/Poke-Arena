@@ -43,6 +43,10 @@ const errorCls = "mt-1 text-xs font-medium text-red-300";
 
 export function LocationForm({ values, onChange, disabled }: Props) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [turnosText, setTurnosText] = useState<string>(() => {
+    const raw = (values.efecto_params as unknown as Record<string, unknown>)?.turnos;
+    return Array.isArray(raw) ? raw.join(", ") : "1";
+  });
 
   const touch = (field: string) => setTouched((prev) => ({ ...prev, [field]: true }));
 
@@ -54,12 +58,16 @@ export function LocationForm({ values, onChange, disabled }: Props) {
   const setParams = (params: Record<string, unknown>) =>
     onChange({ ...values, efecto_params: params as unknown as FormValues["efecto_params"] });
 
-  const handleEfectoTipo = (tipo: LocationEffectType) =>
+  const handleEfectoTipo = (tipo: LocationEffectType) => {
+    if (tipo === "RESTRICCION_TURNO") {
+      setTurnosText("1");
+    }
     onChange({
       ...values,
       efecto_tipo: tipo,
       efecto_params: PARAMS_DEFAULT[tipo] as unknown as FormValues["efecto_params"],
     });
+  };
 
   const errors = validateLocationFields(values);
   const maxEnergia = values.energia_tipo === "FIJA" ? 3 : 2;
@@ -250,9 +258,11 @@ export function LocationForm({ values, onChange, disabled }: Props) {
           <label className={labelCls}>Turnos restringidos (enteros positivos, separados por coma)</label>
           <input
             className={inputCls(false)}
-            value={((params.turnos as number[]) ?? []).join(", ")}
+            value={turnosText}
             onChange={(e) => {
-              const turnos = e.target.value
+              const raw = e.target.value;
+              setTurnosText(raw);
+              const turnos = raw
                 .split(",")
                 .map((s) => parseInt(s.trim(), 10))
                 .filter((n) => !isNaN(n) && n > 0);

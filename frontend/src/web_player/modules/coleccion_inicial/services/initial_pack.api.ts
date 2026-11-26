@@ -58,7 +58,15 @@ function isInitialPackCardDTO(item: unknown): item is InitialPackCardDTO {
     typeof candidate.code === "string" &&
     candidate.code.trim().length > 0 &&
     typeof candidate.name === "string" &&
-    candidate.name.trim().length > 0
+    candidate.name.trim().length > 0 &&
+    typeof candidate.card_type === "string" &&
+    typeof candidate.rarity === "string" &&
+    typeof candidate.cost === "number" &&
+    typeof candidate.power === "number" &&
+    typeof candidate.ability_code === "string" &&
+    typeof candidate.ability_name === "string" &&
+    typeof candidate.image_url === "string" &&
+    typeof candidate.thumbnail_url === "string"
   );
 }
 
@@ -110,12 +118,13 @@ export function isInitialPackStatusDTO(payload: unknown): payload is InitialPack
     return uniqueIds.size === INITIAL_COLLECTION_CONSTANTS.REQUIRED_COMMON_CARDS;
   }
 
-  // state === "COMPLETED"
+  // state === "COMPLETED" (GET posterior devuelve 0 cartas; POST /open devuelve las 15 asignadas)
   return (
     candidate.received === true &&
     candidate.opened === true &&
     typeof candidate.opened_at === "string" &&
-    candidate.cards.length === 0
+    (candidate.cards.length === 0 ||
+      candidate.cards.length === INITIAL_COLLECTION_CONSTANTS.REQUIRED_COMMON_CARDS)
   );
 }
 
@@ -126,6 +135,14 @@ function freezeInitialPackStatus(dto: InitialPackStatusDTO): InitialPackStatusDT
         id: card.id,
         code: card.code,
         name: card.name,
+        card_type: card.card_type,
+        rarity: card.rarity,
+        cost: card.cost,
+        power: card.power,
+        ability_code: card.ability_code,
+        ability_name: card.ability_name,
+        image_url: card.image_url,
+        thumbnail_url: card.thumbnail_url,
       })
     )
   );
@@ -156,6 +173,8 @@ function validateAndFreezeResponse(
     status: response.status,
     data: freezeInitialPackStatus(response.data),
     correlationId: response.correlationId,
+    etag: response.etag,
+    notModified: response.notModified,
   };
 }
 

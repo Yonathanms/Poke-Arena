@@ -1,16 +1,17 @@
-"""Composición SQL sin registrar API, conectar motores ni activar workers.
+"""Composición SQL/NoSQL del módulo Catálogo.
 
-Punto único de composición y carga para gestion_cartas.
+Punto único de composición y carga para gestion_cartas y gestion_ubicaciones.
 """
 
+from collections.abc import Sequence
 from importlib import import_module
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.postgresql.base import Base
 from src.shared.idempotencia.models import IdempotencyRecordORM
-from src.shared.outbox import OutboxEventORM
 
 _PAQUETE = f"{__package__}.gestion_cartas"
 dominio_cartas = import_module(f"{_PAQUETE}.domain.carta_model")
@@ -20,39 +21,37 @@ puertos_imagenes = import_module(f"{_PAQUETE}.ports.imagen_ports")
 aplicacion_cartas = import_module(f"{_PAQUETE}.services.cartas_service")
 persistencia_creacion = import_module(f"{_PAQUETE}.adapters.sql_creacion_carta")
 proyeccion_domain = import_module(f"{_PAQUETE}.domain.proyeccion_carta")
-outbox_sql = import_module(f"{_PAQUETE}.adapters.sql_outbox_repository")
-outbox_mongo = import_module(f"{_PAQUETE}.adapters.mongo_card_projection")
-outbox_app = import_module(f"{_PAQUETE}.services.proyeccion_service")
+fuente_cartas_sql = import_module(f"{_PAQUETE}.adapters.sql_outbox_repository")
+proyeccion_mongo = import_module(f"{_PAQUETE}.adapters.mongo_card_projection")
+reconciliador_cartas_app = import_module(f"{_PAQUETE}.services.proyeccion_service")
 _orm = import_module(f"{_PAQUETE}.adapters.cartas_orm")
 _repositorio = import_module(f"{_PAQUETE}.adapters.sql_carta_repository")
 
 
 def modelos_persistencia() -> tuple[type[Base], ...]:
-    """Expone seis mapeos únicos sin DDL; metadata parcial no apta para autogenerate."""
+    """Expone los mapeos ORM de catálogo sin DDL."""
     return (
-        _orm.CartaORM, _orm.HabilidadORM, _orm.ImagenCartaORM, _orm.ContadorCartaORM,
-        IdempotencyRecordORM, OutboxEventORM,
+        _orm.CartaORM,
+        _orm.HabilidadORM,
+        _orm.ImagenCartaORM,
+        _orm.ContadorCartaORM,
+        IdempotencyRecordORM,
     )
 
 
 def crear_repositorio_cartas(session: AsyncSession) -> Any:
-    """Inyecta sesión, sin transacciones ni HTTP; frontera dinámica explícita.
-
-    Any está limitado a esta composición: importlib devuelve módulos sin tipos
-    estáticos de sus miembros. El adaptador implementa el puerto tipado original,
-    verificado por Mypy con su nombre de módulo y por pruebas de composición.
-    """
+    """Inyecta sesión SQL para operaciones de catálogo."""
     return _repositorio.SqlCartaRepository(session)
 
 
 def crear_procesador_imagenes() -> Any:
-    """Compone el procesador local sin requerir un event loop ni bases."""
+    """Compone el procesador local Pillow sin requerir un event loop ni bases."""
     modulo = import_module(f"{_PAQUETE}.adapters.imagen_carta_adapter")
     return modulo.ProcesadorImagenPillow()
 
 
 def crear_almacen_imagenes() -> Any:
-    """Compone GridFS en el loop activo mediante el cliente oficial."""
+    """Compone GridFS en el loop activo mediante el cliente PyMongo Async oficial."""
     from gridfs import AsyncGridFSBucket
 
     from src.database.mongodb.connection import get_mongo_db
@@ -63,14 +62,48 @@ def crear_almacen_imagenes() -> Any:
     return modulo.AlmacenImagenGridFS(bucket, crear_procesador_imagenes())
 
 
+def crear_proyeccion_cartas() -> Any:
+    """Compone el adaptador MongoDB para escritura directa y reconciliación de cards_projection."""
+    from src.database.mongodb.connection import get_mongo_db
+
+    return proyeccion_mongo.MongoProyeccionCartas(get_mongo_db()["cards_projection"])
+
+
 def crear_servicio_crear_carta() -> Any:
-    """Compone el caso de uso para Python, con los clientes oficiales."""
+    """Compone CrearCarta con commit ACID en PostgreSQL y proyección directa a MongoDB."""
     from src.database.postgresql.connection import AsyncSessionLocal, engine
 
     return aplicacion_cartas.CrearCarta(
         persistencia_creacion.SqlCoordinacionCreacion(engine, AsyncSessionLocal),
         crear_procesador_imagenes(),
         crear_almacen_imagenes(),
+        crear_proyeccion_cartas(),
+    )
+
+
+def crear_servicio_consulta_cartas() -> Any:
+    """Compone el servicio de consulta de catálogo (MongoDB + inventario SQL)."""
+    mongo_repo_mod = import_module(f"{_PAQUETE}.adapters.mongo_carta_repository")
+    inventario_mod = import_module(f"{_PAQUETE}.adapters.sql_inventario_adapter")
+    return aplicacion_cartas.CartasService(
+        repository=mongo_repo_mod.MongoCartaRepository(),
+        inventario=inventario_mod.SqlInventarioJugadorAdapter(),
+    )
+
+
+def crear_servicio_ubicaciones() -> Any:
+    """Compone el caso de uso de ubicaciones con sus adaptadores de medios, SQL y MongoDB."""
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    from .gestion_ubicaciones.adapters.imagen_ubicacion_adapter import ImagenUbicacionAdapter
+    from .gestion_ubicaciones.adapters.mongo_ubicacion_repository import MongoUbicacionRepository
+    from .gestion_ubicaciones.adapters.sql_ubicacion_repository import SqlUbicacionRepository
+    from .gestion_ubicaciones.services.ubicaciones_service import UbicacionesService
+
+    return UbicacionesService(
+        ImagenUbicacionAdapter(),
+        SqlUbicacionRepository(AsyncSessionLocal),
+        MongoUbicacionRepository(),
     )
 
 
@@ -78,9 +111,14 @@ def router_cartas(administrador: Any, jugador: Any = None) -> Any:
     """Compone el router del catálogo con la autorización pública de identidad."""
     modulo = import_module(f"{_PAQUETE}.controllers.cartas_controller")
     return modulo.crear_router(
-        administrador, crear_servicio_crear_carta, listar_habilidades,
-        tipos=listar_tipos, rarezas=listar_rarezas,
-        jugador=jugador, miniatura=recuperar_miniatura_carta,
+        administrador,
+        crear_servicio_crear_carta,
+        listar_habilidades,
+        servicio_consulta=crear_servicio_consulta_cartas,
+        tipos=listar_tipos,
+        rarezas=listar_rarezas,
+        jugador=jugador,
+        miniatura=recuperar_miniatura_carta,
         imagen_grande=recuperar_imagen_carta,
     )
 
@@ -118,35 +156,83 @@ async def recuperar_miniatura_carta(carta_id: str) -> bytes | None:
             return referencia
 
     datos: bytes | None = await servicio.recuperar_miniatura(
-        carta_id, buscar_referencia, crear_almacen_imagenes(),
+        carta_id,
+        buscar_referencia,
+        crear_almacen_imagenes(),
     )
     return datos
 
 
-def router_ubicaciones(administrador: Any | None = None) -> Any:
-    """Compone el router de ubicaciones con autorización."""
-    from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router, router
-    if administrador is not None:
-        return crear_router(administrador)
-    return router
+def crear_almacen_imagenes_ubicaciones() -> Any:
+    """Compone GridFS en el loop activo para el bucket de imágenes de ubicaciones."""
+    from gridfs import AsyncGridFSBucket
 
-
-def componer_procesador_outbox() -> tuple[Any, Any, type[Exception]]:
-    """Compone el consumidor 1F con las conexiones oficiales y el índice existente."""
     from src.database.mongodb.connection import get_mongo_db
-    from src.database.postgresql.connection import AsyncSessionLocal
-    from src.shared.config import get_settings
 
-    ajustes = get_settings()
-    db = get_mongo_db(conexion_directa=True)
-    almacen = outbox_mongo.MongoProyeccionCartas(db["cards_projection"])
-    repo = outbox_sql.SqlOutboxCartas(
-        AsyncSessionLocal, ajustes.OUTBOX_LEASE_SECONDS, ajustes.OUTBOX_MAX_ATTEMPTS
+    from .gestion_ubicaciones.adapters.imagen_ubicacion_adapter import AlmacenImagenUbicacionGridFS
+
+    bucket = AsyncGridFSBucket(get_mongo_db(), bucket_name="location_images")
+    return AlmacenImagenUbicacionGridFS(bucket=bucket)
+
+
+async def _recuperar_media_ubicacion(location_id: str, variante: str) -> bytes | None:
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    from .gestion_ubicaciones.adapters.sql_ubicacion_repository import SqlFuenteUbicaciones
+
+    fuente = SqlFuenteUbicaciones(AsyncSessionLocal)
+    referencia = await fuente.obtener_referencia_imagen(location_id, variante)
+    if referencia is None:
+        return None
+    almacen = crear_almacen_imagenes_ubicaciones()
+    datos: bytes | None = await almacen.recuperar(referencia)
+    return datos
+
+
+async def recuperar_imagen_ubicacion(location_id: str) -> bytes | None:
+    """Recupera el WebP grande de una ubicación desde PostgreSQL + GridFS location_images."""
+    return await _recuperar_media_ubicacion(location_id, "image")
+
+
+async def recuperar_miniatura_ubicacion(location_id: str) -> bytes | None:
+    """Recupera el WebP de tablero (miniatura) de una ubicación desde PostgreSQL + GridFS."""
+    return await _recuperar_media_ubicacion(location_id, "thumbnail")
+
+
+def router_ubicaciones(administrador: Any, jugador: Any = None) -> Any:
+    """Compone el router de ubicaciones con autorización y caso de uso."""
+    from .gestion_ubicaciones.controllers.ubicaciones_controller import crear_router
+
+    return crear_router(
+        administrador,
+        crear_servicio_ubicaciones,
+        jugador=jugador,
+        imagen_grande=recuperar_imagen_ubicacion,
+        miniatura=recuperar_miniatura_ubicacion,
     )
-    return (
-        outbox_app.ProcesadorOutbox(repo, almacen, ajustes.OUTBOX_RETRY_MAX_SECONDS),
-        almacen,
-        proyeccion_domain.OutboxTemporal,
+
+
+def componer_reconciliador_cartas() -> Any:
+    """Compone el reconciliador periódico SQL -> MongoDB para cartas."""
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    return reconciliador_cartas_app.ReconciliadorCartas(
+        fuente_cartas_sql.SqlFuenteCartas(AsyncSessionLocal),
+        crear_proyeccion_cartas(),
+    )
+
+
+def componer_reconciliador_ubicaciones() -> Any:
+    """Compone el reconciliador periódico SQL -> MongoDB para ubicaciones."""
+    from src.database.postgresql.connection import AsyncSessionLocal
+
+    from .gestion_ubicaciones.adapters.mongo_ubicacion_repository import MongoUbicacionRepository
+    from .gestion_ubicaciones.adapters.sql_ubicacion_repository import SqlFuenteUbicaciones
+    from .gestion_ubicaciones.services.ubicaciones_service import ReconciliadorUbicaciones
+
+    return ReconciliadorUbicaciones(
+        SqlFuenteUbicaciones(AsyncSessionLocal),
+        MongoUbicacionRepository(),
     )
 
 
@@ -180,16 +266,115 @@ async def listar_rarezas() -> list[tuple[str, str]]:
         return list(filas)
 
 
+async def leer_cartas_catalogo_para_partida(
+    sesion: AsyncSession,
+    card_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Lee snapshots de cartas con sus habilidades usando una sesión ya abierta."""
+    if not card_ids:
+        return []
+    resultado = await sesion.execute(
+        text("""
+            SELECT c.id, c.code, c.name, c.cost, c.power, c.card_type, c.rarity,
+                   a.code AS ability_code, a.name AS ability_name, a.params AS ability_params
+            FROM catalog_cards c
+            JOIN catalog_abilities a ON a.id = c.ability_id
+            WHERE c.id = ANY(:card_ids)
+        """),
+        {"card_ids": list(card_ids)},
+    )
+    return [
+        {
+            "id": str(fila["id"]),
+            "code": str(fila["code"]),
+            "name": str(fila["name"]),
+            "cost": int(fila["cost"]),
+            "power": int(fila["power"]),
+            "card_type": str(fila["card_type"]),
+            "rarity": str(fila["rarity"]),
+            "ability_code": str(fila["ability_code"]),
+            "ability_name": str(fila["ability_name"]),
+            "ability_params": dict(fila["ability_params"] or {}),
+        }
+        for fila in resultado.mappings().all()
+    ]
+
+
+async def listar_ubicaciones_catalogo_para_partida(sesion: AsyncSession) -> list[dict[str, Any]]:
+    """Lista todas las ubicaciones del catálogo para sorteo de inicio de partida."""
+    resultado = await sesion.execute(
+        text("""
+            SELECT id, nombre, descripcion, card_limit, energia_tipo, energia_valor,
+                   efecto_tipo, efecto_params
+            FROM locations
+            ORDER BY id
+        """)
+    )
+    ubicaciones: list[dict[str, Any]] = []
+    for fila in resultado.mappings().all():
+        loc_id = str(fila["id"])
+        ubicaciones.append({
+            "id": loc_id,
+            "nombre": str(fila["nombre"]),
+            "descripcion": str(fila["descripcion"]),
+            "card_limit": int(fila["card_limit"]),
+            "energia_tipo": str(fila["energia_tipo"]),
+            "energia_valor": int(fila["energia_valor"]),
+            "efecto_tipo": str(fila["efecto_tipo"]),
+            "efecto_params": dict(fila["efecto_params"] or {}),
+            "image_url": f"/api/v1/content/locations/{loc_id}/image",
+            "thumbnail_url": f"/api/v1/content/locations/{loc_id}/thumbnail",
+        })
+    return ubicaciones
+
+
+async def listar_cartas_elegibles_bot(sesion: AsyncSession) -> list[dict[str, Any]]:
+    """Lista cartas del catálogo con imagen READY para conformar el deck del Bot."""
+    resultado = await sesion.execute(
+        text("""
+            SELECT c.id, c.code, c.name, c.cost, c.power, c.card_type, c.rarity,
+                   a.code AS ability_code, a.name AS ability_name, a.params AS ability_params
+            FROM catalog_cards c
+            JOIN catalog_abilities a ON a.id = c.ability_id
+            JOIN catalog_card_images ci ON ci.id = c.image_id
+            WHERE ci.state = 'READY'
+            ORDER BY c.id
+        """)
+    )
+    return [
+        {
+            "id": str(fila["id"]),
+            "code": str(fila["code"]),
+            "name": str(fila["name"]),
+            "cost": int(fila["cost"]),
+            "power": int(fila["power"]),
+            "card_type": str(fila["card_type"]),
+            "rarity": str(fila["rarity"]),
+            "ability_code": str(fila["ability_code"]),
+            "ability_name": str(fila["ability_name"]),
+            "ability_params": dict(fila["ability_params"] or {}),
+        }
+        for fila in resultado.mappings().all()
+    ]
+
+
 __all__ = [
-    "componer_procesador_outbox",
+    "componer_reconciliador_cartas",
+    "componer_reconciliador_ubicaciones",
     "crear_almacen_imagenes",
     "crear_procesador_imagenes",
+    "crear_proyeccion_cartas",
     "crear_repositorio_cartas",
     "crear_servicio_crear_carta",
+    "leer_cartas_catalogo_para_partida",
+    "listar_cartas_elegibles_bot",
     "listar_habilidades",
     "listar_rarezas",
     "listar_tipos",
+    "listar_ubicaciones_catalogo_para_partida",
     "modelos_persistencia",
+    "recuperar_imagen_ubicacion",
+    "recuperar_miniatura_ubicacion",
     "router_cartas",
     "router_ubicaciones",
 ]

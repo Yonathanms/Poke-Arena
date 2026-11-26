@@ -65,3 +65,16 @@ class DeckNoEncontrado(Exception):
 
 class DeckEnCurso(Exception):
     """Otra solicitud con la misma Idempotency-Key está en progreso."""
+
+
+class DeckEnUso(Exception):
+    """El deck está bloqueado por una búsqueda abierta o una partida activa."""
+
+    def __init__(
+        self,
+        mensaje: str = (
+            "No puedes modificar ni eliminar un deck mientras está en una búsqueda abierta"
+            " o en una partida activa."
+        ),
+    ) -> None:
+        super().__init__(mensaje)
